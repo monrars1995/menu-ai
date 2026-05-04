@@ -27,7 +27,7 @@ services:
       DEMO_GERAR_SEM_AUTH: "false"
       ALLOW_OPEN_REGISTRO: "true"
       DEFAULT_EMPRESA_ID: ${DEFAULT_EMPRESA_ID}
-      PYTHONPATH: /app
+      PYTHONPATH: /app:/install/lib/python3.13/site-packages
       DB_ECHO: "false"
       CORS_ORIGINS: ${CORS_ORIGINS}
     networks:
