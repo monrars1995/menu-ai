@@ -1,0 +1,70 @@
+# ============================================================
+# Menu.AI v3.0 — Variáveis de Ambiente
+# Copie este arquivo para .env e preencha os valores
+# ============================================================
+
+# ============================================================
+# BANCO DE DADOS PostgreSQL
+# ============================================================
+# Formato: postgresql://usuario:senha@host:porta/nome_banco
+DATABASE_URL=postgresql://menuai:menuai123@localhost:5432/menuai_db
+
+# Ativar logs SQL (útil para debug, desativar em produção)
+DB_ECHO=false
+
+# ============================================================
+# AUTENTICAÇÃO JWT
+# ============================================================
+# Gere uma chave segura com: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=menuai-secret-key-TROQUE-EM-PRODUCAO
+
+# Duração do token em horas (padrão: 24h)
+TOKEN_EXPIRE_HOURS=24
+
+# ============================================================
+# LLM — Escolha UMA das opções abaixo
+# ============================================================
+
+# ✅ OPÇÃO 1 — Groq (RECOMENDADO para teste: gratuito e rápido)
+# Crie conta em: https://console.groq.com → API Keys
+# GROQ_API_KEY=gsk_sua_chave_aqui
+# LLM_MODEL=groq/llama-3.3-70b-versatile
+
+# ✅ OPÇÃO 2 — OpenAI GPT
+# OPENAI_API_KEY=sk-sua_chave_aqui
+# LLM_MODEL=gpt-4o-mini
+
+# ✅ OPÇÃO 3 — Anthropic Claude (recomendado para produção)
+# ANTHROPIC_API_KEY=sk-ant-sua_chave_aqui
+# LLM_MODEL=anthropic/claude-sonnet-4-5
+
+# ✅ OPÇÃO 4 — Qwen (Alibaba)
+# QWEN_API_KEY=sk-sua_chave_aqui
+# LLM_MODEL=qwen-plus
+# LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+
+# ✅ OPÇÃO 5 — Ollama (100% local, sem custo)
+# Instale: brew install ollama && ollama pull llama3.2 && ollama serve
+# LLM_MODEL=ollama/llama3.2
+# LLM_BASE_URL=http://localhost:11434
+
+# ============================================================
+# SERVIDOR
+# ============================================================
+PORT=8000
+DEBUG=false
+
+# ============================================================
+# COMO SUBIR O POSTGRESQL LOCAL COM DOCKER
+# ============================================================
+# docker run -d \
+#   --name menuai-postgres \
+#   -e POSTGRES_USER=menuai \
+#   -e POSTGRES_PASSWORD=menuai123 \
+#   -e POSTGRES_DB=menuai_db \
+#   -p 5432:5432 \
+#   postgres:16-alpine
+#
+# Depois execute as migrações:
+#   pip install -r requirements.txt --break-system-packages
+#   alembic upgrade head

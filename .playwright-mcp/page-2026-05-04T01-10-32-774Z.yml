@@ -1,0 +1,30 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img "Menu.AI" [ref=e5]
+      - heading "Criar conta" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Comece a planejar cardápios inteligentes
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: Nome
+        - textbox "Nome" [ref=e12]:
+          - /placeholder: Seu nome completo
+      - generic [ref=e13]:
+        - generic [ref=e14]: Email
+        - textbox "Email" [ref=e15]:
+          - /placeholder: seu@email.com
+      - generic [ref=e16]:
+        - generic [ref=e17]: Senha
+        - generic [ref=e18]:
+          - textbox "Senha" [ref=e19]:
+            - /placeholder: Mínimo 6 caracteres
+          - button [ref=e20] [cursor=pointer]:
+            - img [ref=e21]
+      - button "Criar conta" [ref=e24] [cursor=pointer]:
+        - img [ref=e25]
+        - text: Criar conta
+    - paragraph [ref=e28]:
+      - text: Já tem conta?
+      - link "Entrar" [ref=e29] [cursor=pointer]:
+        - /url: /login
+  - alert [ref=e30]

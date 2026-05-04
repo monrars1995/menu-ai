@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Menu.AI · Painel administrativo{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="{{ admin_asset('admin.css') }}"/>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="page-bg" aria-hidden="true"></div>
+
+  <header class="app-header">
+    <div class="brand">
+      Menu.AI <span>· Painel administrativo</span>
+    </div>
+    <div class="header-actions">
+      {% if db_ok %}
+      <span class="badge badge--ok" title="Conexão com o banco de dados">Banco conectado</span>
+      {% else %}
+      <span class="badge badge--bad">Banco desconectado</span>
+      {% endif %}
+      {% if debug %}
+      <span class="badge" title="Ambiente de desenvolvimento">Modo desenvolvimento</span>
+      {% endif %}
+      <span class="muted" id="auth-user" style="font-size:0.85rem;">Faça login para ver dados.</span>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar" aria-label="Navegação principal">
+      <div class="sidebar-label">Navegação</div>
+      <a class="sidebar-link" href="#login">
+        <i data-lucide="log-in"></i> Login
+      </a>
+      <a class="sidebar-link" href="#overview">
+        <i data-lucide="layout-dashboard"></i> Visão geral
+      </a>
+      <a class="sidebar-link" href="#empresas">
+        <i data-lucide="building-2"></i> Empresas
+      </a>
+      <a class="sidebar-link" href="#contratos">
+        <i data-lucide="file-text"></i> Contratos
+      </a>
+      <a class="sidebar-link" href="#ingredientes">
+        <i data-lucide="carrot"></i> Ingredientes
+      </a>
+      <a class="sidebar-link" href="#fichas">
+        <i data-lucide="clipboard-list"></i> Fichas técnicas
+      </a>
+      <a class="sidebar-link" href="#cardapios">
+        <i data-lucide="calendar-days"></i> Cardápios
+      </a>
+      <div class="sidebar-label">Sistema</div>
+      <a class="sidebar-link" href="#pipeline">
+        <i data-lucide="git-branch"></i> Pipeline
+      </a>
+      <a class="sidebar-link" href="#llm">
+        <i data-lucide="cpu"></i> Modelos LLM
+      </a>
+      <a class="sidebar-link" href="#knowledge">
+        <i data-lucide="database-zap"></i> Vetor Supabase
+      </a>
+      <a class="sidebar-link" href="#docs">
+        <i data-lucide="book-open"></i> Documentação
+      </a>
+    </aside>
+
+    <main class="main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="{{ admin_asset('admin.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

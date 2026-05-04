@@ -1,0 +1,11 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <defs>
+    <linearGradient id="coralGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF4F27"/>
+      <stop offset="100%" stop-color="#FF7A59"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="18" r="6" fill="url(#coralGrad)"/>
+  <path d="M26 80 V42 C26 35 32 30 38 36 L50 48 L62 36 C68 30 74 35 74 42 V80" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M50 48 V85" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+</svg>

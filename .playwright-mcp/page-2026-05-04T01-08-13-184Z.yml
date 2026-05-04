@@ -1,0 +1,31 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - img "Menu.AI" [ref=e5]
+      - heading "Menu.AI" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Planejamento inteligente de cardápios
+    - generic [ref=e8]:
+      - button "Continuar com Google" [ref=e9] [cursor=pointer]:
+        - img [ref=e10]
+        - text: Continuar com Google
+      - generic [ref=e19]: ou
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]: Email
+          - textbox "Email" [ref=e23]:
+            - /placeholder: seu@email.com
+        - generic [ref=e24]:
+          - generic [ref=e25]: Senha
+          - generic [ref=e26]:
+            - textbox "Senha" [ref=e27]:
+              - /placeholder: Sua senha
+            - button [ref=e28] [cursor=pointer]:
+              - img [ref=e29]
+        - button "Entrar" [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+          - text: Entrar
+    - paragraph [ref=e36]:
+      - text: Não tem conta?
+      - link "Criar conta" [ref=e37] [cursor=pointer]:
+        - /url: /register
+  - alert [ref=e38]

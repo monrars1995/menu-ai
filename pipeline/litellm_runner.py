@@ -1,0 +1,255 @@
+"""
+Execução sequencial do pipeline de geração de cardápio via LiteLLM (sem CrewAI kickoff).
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+from types import SimpleNamespace
+from typing import Any, List, Optional
+
+from litellm import completion
+
+from pipeline.llm_litellm import get_litellm_config
+from pipeline.sequential_spec import build_steps
+
+MAX_TOOL_TURNS = 32
+MAX_PRIOR_LEN = 14000
+
+
+def _openai_name(tool: Any) -> str:
+    n = getattr(tool, "name", None) or ""
+    if not n and hasattr(tool, "func") and getattr(tool, "func", None) is not None:
+        n = getattr(tool.func, "__name__", "tool")
+    s = re.sub(r"\s+", "_", str(n) or "tool")[:64]
+    return s or "tool"
+
+
+def _to_openai_tools(tools: List[Any]) -> List[dict]:
+    if not tools:
+        return []
+    try:
+        from langchain_core.utils.function_calling import convert_to_openai_tool
+    except ImportError:
+        try:
+            from langchain_core.utils.function_calling import (
+                convert_to_openai_function as convert_to_openai_tool,
+            )
+        except ImportError as e:
+            raise ImportError("Instale langchain-core: pip install langchain-core") from e
+    out: List[dict] = []
+    for t in tools:
+        if t is None:
+            continue
+        try:
+            oa = convert_to_openai_tool(t)
+            if isinstance(oa, dict) and oa.get("type") == "function":
+                out.append(oa)
+            else:
+                out.append({"type": "function", "function": oa})
+        except Exception:
+            continue
+    return out
+
+
+def _index_tools(tools: List[Any]) -> dict:
+    m: dict = {}
+    for t in tools:
+        if t is None:
+            continue
+        a = _openai_name(t)
+        m[a] = t
+        m[a.lower()] = t
+    return m
+
+
+def _invoke_one(tool: Any, args: dict) -> str:
+    if not isinstance(args, dict):
+        args = {}
+    if hasattr(tool, "invoke"):
+        return str(tool.invoke(args))
+    if hasattr(tool, "_run"):
+        return str(tool._run(**args))
+    if hasattr(tool, "func"):
+        return str(tool.func(**args))
+    if hasattr(tool, "run"):
+        return str(tool.run(**args))
+    return str(tool)
+
+
+def _normalize_tool_calls(choice) -> List[dict]:
+    """Converte tool_calls de vários formatos (OpenAI, LiteLLM) para dicts idempotentes."""
+    msg = choice.message
+    tcalls = getattr(msg, "tool_calls", None) or (msg.get("tool_calls") if isinstance(msg, dict) else None)
+    if not tcalls:
+        return []
+    out = []
+    for tc in tcalls:
+        if hasattr(tc, "id") and hasattr(tc, "function"):
+            out.append(
+                {
+                    "id": getattr(tc, "id", "") or "",
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments or "{}",
+                    },
+                }
+            )
+        elif isinstance(tc, dict):
+            fn = tc.get("function") or {}
+            out.append(
+                {
+                    "id": tc.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": fn.get("name", ""),
+                        "arguments": fn.get("arguments", "{}")
+                        if isinstance(fn.get("arguments"), str)
+                        else json.dumps(fn.get("arguments", {})),
+                    },
+                }
+            )
+    return out
+
+
+def _assistant_content(choice) -> Optional[str]:
+    msg = choice.message
+    c = getattr(msg, "content", None) or (msg.get("content") if isinstance(msg, dict) else None)
+    return c if c else None
+
+
+def _run_with_tools(
+    model: str,
+    api_key: Optional[str],
+    api_base: Optional[str],
+    system: str,
+    user: str,
+    tools: List[Any],
+    step_callback: Any,
+    agent_name: str,
+    extra_headers: Optional[dict] = None,
+) -> str:
+    openai_tools = _to_openai_tools(tools)
+    idx = _index_tools(tools)
+    messages: List[dict] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
+    for _ in range(MAX_TOOL_TURNS):
+        kwargs: dict = {
+            "model": model,
+            "messages": messages,
+            "temperature": float(os.getenv("LLM_TEMPERATURE", "0.7") or 0.7),
+        }
+        if api_key:
+            kwargs["api_key"] = api_key
+        if api_base:
+            kwargs["api_base"] = api_base
+        if extra_headers:
+            kwargs["extra_headers"] = extra_headers
+        if openai_tools:
+            kwargs["tools"] = openai_tools
+        try:
+            resp = completion(**kwargs)
+        except Exception as e:
+            return f"[ERRO LLM] {e!s}"
+        if not resp.choices:
+            return ""
+        choice = resp.choices[0]
+        tcalls = _normalize_tool_calls(choice)
+        content = _assistant_content(choice)
+        if not tcalls:
+            return (content or "").strip()
+        asst: dict = {
+            "role": "assistant",
+            "content": content,
+            "tool_calls": tcalls,
+        }
+        if not content:
+            asst["content"] = None
+        messages = list(messages)
+        messages.append(asst)
+        for tc in tcalls:
+            fn = (tc or {}).get("function") or {}
+            name = fn.get("name", "")
+            raw = fn.get("arguments", "{}")
+            if not isinstance(raw, str):
+                raw = json.dumps(raw)
+            tid = (tc or {}).get("id", "")
+            if step_callback:
+                try:
+                    step_callback(f"(ferramenta) {name}", agent_name=agent_name)
+                except TypeError:
+                    try:
+                        step_callback(f"(ferramenta) {name}", **{"agent_name": agent_name})
+                    except Exception:
+                        pass
+            try:
+                ajs = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                ajs = {}
+            tinst = (
+                idx.get(name)
+                or idx.get(name.replace(" ", "_"))
+            )
+            if tinst is not None:
+                try:
+                    out = _invoke_one(tinst, ajs)
+                except Exception as ex:
+                    out = f"ERRO: {ex}"
+            else:
+                out = f"[ferramenta não encontrada: {name}]"
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tid or f"call_{name}",
+                    "content": out[:120000],
+                }
+            )
+    return "[FIM: limite de chamadas a ferramentas]"
+
+
+def run_lite_pipeline(crew) -> str:
+    """Executa 7 etapas com a mesma semântica de ferramentas e contexto de `build_steps`."""
+    mo = getattr(crew, "llm_model_id", None)
+    cfg = get_litellm_config(model_override=mo)
+    crew._configurar_tools()
+    steps = build_steps(crew)
+    prior: List[str] = []
+    last_out = ""
+    for st in steps:
+        ctx = ""
+        if prior:
+            acc = "\n\n".join(prior)
+            if len(acc) > MAX_PRIOR_LEN:
+                acc = acc[: MAX_PRIOR_LEN - 3] + "..."
+            ctx = f"\n\n## Contexto de etapas anteriores\n{acc}\n"
+        u = st.user + ctx
+        out = _run_with_tools(
+            cfg.model,
+            cfg.api_key,
+            cfg.api_base,
+            st.system,
+            u,
+            st.tools,
+            crew.step_callback,
+            st.label,
+            extra_headers=getattr(cfg, "extra_headers", None),
+        )
+        last_out = out
+        prior.append(f"## {st.label}\n{out}")
+        if crew.task_callback:
+            try:
+                crew.task_callback(
+                    SimpleNamespace(
+                        agent=st.label,
+                        raw=out,
+                    )
+                )
+            except Exception:
+                pass
+    crew.ctx.etapa_atual = "concluido"
+    crew.ctx.cardapio_final = last_out
+    return last_out

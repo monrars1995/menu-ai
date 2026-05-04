@@ -1,0 +1,56 @@
+# ============================================================
+# Menu.AI — Docker Compose (Supabase Cloud)
+# ============================================================
+#
+# Comandos úteis:
+#   Subir tudo:        docker compose up -d
+#   Ver logs:          docker compose logs -f
+#   Parar tudo:        docker compose down
+# ============================================================
+
+services:
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: menuai-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
+      DATABASE_URL: ${SUPABASE_DB_URL}
+      PORT: 8000
+      DEBUG: "true"
+      CREATE_ALL_ON_START: "false"
+      PYTHONPATH: /app
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    container_name: menuai-admin
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://menuai-app:8000
+      PORT: 8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/login || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s

@@ -1,0 +1,43 @@
+# ============================================================
+# Menu.AI — Dependências
+# ============================================================
+
+# --- Web Framework ---
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+python-multipart>=0.0.9
+jinja2>=3.1.0
+
+# --- Banco de Dados ---
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg2-binary>=2.9.0       # PostgreSQL driver
+asyncpg>=0.29.0               # PostgreSQL async driver (opcional)
+pgvector>=0.3.6
+supabase>=2.15.3
+
+# --- Autenticação ---
+passlib[bcrypt]>=1.7.4
+python-jose[cryptography]>=3.3.0
+bcrypt>=4.0.1,<4.1.0
+
+# --- LLM / orquestrador pipeline (LiteLLM + LangChain) ---
+openai>=1.0.0
+litellm>=1.0.0
+anthropic>=0.40.0
+langchain-core>=0.2.0
+
+# --- API ---
+slowapi>=0.1.9
+
+# --- Dados e Planilhas ---
+pandas>=2.0.0
+openpyxl>=3.0.0
+pdfplumber>=0.10.0
+reportlab>=4.0.0
+
+# --- Utilitários ---
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+email-validator>=2.0.0

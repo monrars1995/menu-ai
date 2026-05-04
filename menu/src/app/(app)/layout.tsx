@@ -1,0 +1,77 @@
+"use client";
+
+import { useAuth } from "@/lib/auth";
+import { Sidebar } from "@/components/layout/sidebar";
+import { MobileNavProvider, useMobileNav } from "@/components/layout/mobile-nav";
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { Menu } from "lucide-react";
+
+function AppChrome({ children }: { children: React.ReactNode }) {
+  const { open, closeNav, openNav } = useMobileNav();
+
+  return (
+    <div className="flex min-h-screen min-h-[100dvh] bg-canvas">
+      {open ? (
+        <button
+          type="button"
+          aria-label="Fechar menu"
+          className="fixed inset-0 z-[35] bg-black/40 md:hidden"
+          onClick={closeNav}
+        />
+      ) : null}
+
+      <header className="fixed left-0 right-0 top-0 z-[44] flex h-14 items-center gap-3 border-b border-hairline bg-white/95 px-4 backdrop-blur-sm md:hidden">
+        <button
+          type="button"
+          onClick={openNav}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink hover:bg-surface-soft"
+          aria-expanded={open}
+          aria-controls="app-sidebar"
+        >
+          <Menu size={22} strokeWidth={1.75} />
+        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          <img src="/isotipo.svg" alt="" className="h-7 w-7 shrink-0" aria-hidden />
+          <span className="truncate font-display text-sm font-medium text-ink">Menu.AI</span>
+        </div>
+      </header>
+
+      <Sidebar id="app-sidebar" />
+      <main className="ml-0 flex w-full min-h-0 min-w-0 flex-1 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:ml-60 md:px-6 md:pb-6 md:pt-6">
+        {children}
+      </main>
+    </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+    }
+  }, [loading, user, router, pathname]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
+        <div className="flex items-center gap-3">
+          <img src="/isotipo.svg" alt="Menu.AI" className="h-8 w-8 animate-pulse" />
+          <div className="h-4 w-20 animate-pulse rounded bg-ink/10" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  return (
+    <MobileNavProvider>
+      <AppChrome>{children}</AppChrome>
+    </MobileNavProvider>
+  );
+}

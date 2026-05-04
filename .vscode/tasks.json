@@ -1,0 +1,90 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🚀 Rodar Menu.AI",
+      "type": "shell",
+      "command": "source venv/bin/activate && python run_server.py",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true,
+        "focus": true
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔧 Corrigir Ambiente Virtual (fix_venv)",
+      "type": "shell",
+      "command": "bash fix_venv.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "clear": true,
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "📦 Instalar Dependências",
+      "type": "shell",
+      "command": "source venv/bin/activate && python -m pip install -r requirements.txt && echo '✅ OK'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🗄️ Verificar Banco de Dados",
+      "type": "shell",
+      "command": "source venv/bin/activate && python -c \"import sqlite3; conn=sqlite3.connect('menuai_test.db'); cur=conn.cursor(); cur.execute('SELECT COUNT(*) FROM ingredientes'); print('Ingredientes:', cur.fetchone()[0]); cur.execute('SELECT COUNT(*) FROM fichas_tecnicas'); print('Fichas:', cur.fetchone()[0]); conn.close(); print('✅ Banco OK')\"",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🗄️ Corrigir Banco (restaurar backup)",
+      "type": "shell",
+      "command": "rm -f menuai_test.db-journal menuai_test.db-wal menuai_test.db-shm && [ -f menuai_test.db.backup ] && cp menuai_test.db.backup menuai_test.db && echo '✅ Banco restaurado do backup com sucesso!' || echo '⚠️  Nenhum backup encontrado'",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🧪 Testar API",
+      "type": "shell",
+      "command": "curl -s http://localhost:8000/ | python -m json.tool 2>/dev/null || curl -s http://localhost:8000/",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

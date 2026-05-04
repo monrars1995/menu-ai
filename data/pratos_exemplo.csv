@@ -1,0 +1,32 @@
+Nome,Denominação,Tipo de Carne,Tipo de Corte,Preparação,Especificação,Per Capita,% Consumo,INCIDÊNCIA MENSAL,Tipo
+Frango Grelhado,Frango,Frango,Peito,Grelhado,Sem pele temperado com ervas,2.10,75,8,principal
+Frango Assado,Frango,Frango,Coxa e Sobrecoxa,Assado,Temperado com alho e limão,1.85,75,8,principal
+Frango ao Molho,Frango,Frango,Coxa,Cozido,Ao molho de tomate com legumes,1.80,75,6,principal
+Frango Ensopado,Frango,Frango,Sobrecoxa,Ensopado,Com quiabo e pimentão,1.75,75,6,principal
+Frango Caipira,Frango,Frango,Perna,Cozido,Com mandioca e coentro,1.90,75,4,principal
+Frango na Chapa,Frango,Frango,Filé,Grelhado,Temperado com colorau,2.05,75,4,principal
+Bife Acebolado,Bovino,Bovino,Coxão Duro,Grelhado,Com cebola caramelizada,2.70,70,6,principal
+Carne Assada,Bovino,Bovino,Patinho,Assado,Ao molho de tomate,2.65,70,4,principal
+Carne de Panela,Bovino,Bovino,Músculo,Cozido,Com batata e cenoura,2.60,70,4,principal
+Isca de Carne,Bovino,Bovino,Coxão Mole,Refogado,Com alho e cebola,2.75,70,4,principal
+Bife ao Molho,Bovino,Bovino,Alcatra,Cozido,Ao molho madeira,2.80,70,4,principal
+Picadinho de Carne,Bovino,Bovino,Patinho,Refogado,Com tomate e ervilha,2.55,70,4,principal
+Lombo Suíno Assado,Suíno,Suíno,Lombo,Assado,Com ervas e mostarda,2.20,70,4,principal
+Costelinha Suína,Suíno,Suíno,Costela,Assado,Temperada com páprica,2.40,70,4,principal
+Linguiça Assada,Suíno,Linguiça,Calabresa,Assado,Grelhada fatiada,1.80,70,4,principal
+Peixe Grelhado,Peixe,Tilápia,Filé,Grelhado,Ao molho de limão,2.00,70,4,principal
+Peixe Ensopado,Peixe,Tilápia,Posta,Cozido,Com molho de tomate e coentro,1.95,70,4,principal
+Frango Desfiado,Frango,Frango,Peito,Cozido,Desfiado ao molho de tomate,1.60,30,6,opcao
+Frango Frito,Frango,Frango,Filé,Frito,Empanado crocante,1.75,30,4,opcao
+Isca de Frango,Frango,Frango,Peito,Frito,Com ervas e limão,1.65,30,4,opcao
+Carne Moída Refogada,Bovino,Bovino,Patinho,Refogado,Com tomate cebola e pimentão,1.90,30,6,opcao
+Carne Moída com Legumes,Bovino,Bovino,Coxão Mole,Refogado,Com cenoura e ervilha,1.85,30,4,opcao
+Sardinha Refogada,Peixe,Sardinha,Inteiro,Refogado,Com tomate cebola e azeite,1.40,30,4,opcao
+Atum com Legumes,Peixe,Atum,Lata,Refogado,Com pimentão e cebola,1.45,30,4,opcao
+Peixe Frito,Peixe,Tilápia,Filé,Frito,Empanado com limão,1.85,30,4,opcao
+Linguiça com Pimentão,Suíno,Linguiça,Defumada,Refogado,Com pimentão e cebola,1.60,30,4,opcao
+Costelinha Suína Frita,Suíno,Suíno,Costela,Frito,Temperada e frita,2.10,30,4,opcao
+Salsicha ao Molho,Suíno,Suíno,Salsicha,Cozido,Com molho de tomate e ervas,1.20,30,4,opcao
+Omelete de Queijo,Ovos,Ovos,Inteiro,Frito,Com queijo e temperos,1.10,30,4,opcao
+Ovo Frito,Ovos,Ovos,Inteiro,Frito,Estrelado com sal,0.85,30,6,opcao
+Ovo Cozido,Ovos,Ovos,Inteiro,Cozido,Inteiro temperado,0.90,30,6,opcao

@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MENU A.I - Brand Assets & Design System V3</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            coral: '#FF4F27',
+                            coralGlow: '#FF7A59',
+                            dark: '#030712',
+                            darkAccent: '#0B1221',
+                            cyan: '#00F0FF',
+                            silver: '#94A3B8',
+                            light: '#F8FAFC'
+                        }
+                    },
+                    fontFamily: {
+                        outfit: ['Outfit', 'sans-serif'],
+                        inter: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    },
+                    backgroundImage: {
+                        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+                        'hero-glow': 'conic-gradient(from 180deg at 50% 50%, #FF4F2733 0deg, #00F0FF33 180deg, #FF4F2733 360deg)',
+                    },
+                    animation: {
+                        'spin-slow': 'spin 8s linear infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        },
+                        pulseGlow: {
+                            '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+                            '50%': { opacity: .7, transform: 'scale(1.05)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #030712; /* brand-dark */
+            color: #F8FAFC;
+        }
+
+        /* Subtil Noise Texture overlay for premium feel */
+        .noise-bg {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 50;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        /* Glass / Bento Cards */
+        .bento-card {
+            background: rgba(11, 18, 33, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 1.5rem;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bento-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+            opacity: 0;
+            transition: opacity 0.4s ease;
+        }
+
+        .bento-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5), 0 0 20px rgba(255, 79, 39, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .bento-card:hover::before {
+            opacity: 1;
+        }
+
+        /* Animated Text Gradient */
+        .text-glow {
+            background: linear-gradient(to right, #FF4F27, #FF7A59, #00F0FF, #FF4F27);
+            background-size: 300% auto;
+            color: transparent;
+            -webkit-background-clip: text;
+            background-clip: text;
+            animation: gradientMove 6s linear infinite;
+        }
+
+        @keyframes gradientMove {
+            0% { background-position: 0% center; }
+            100% { background-position: 300% center; }
+        }
+
+        /* Toast styles */
+        .toast {
+            transform: translateY(150%);
+            opacity: 0;
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #030712; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #334155; }
+        
+        /* Utility to hide text selection highlight for logos */
+        .no-select { user-select: none; }
+    </style>
+</head>
+<body class="font-inter antialiased overflow-x-hidden selection:bg-brand-coral/30 selection:text-white">
+
+    <div class="noise-bg"></div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast fixed bottom-8 right-8 bg-brand-darkAccent/90 backdrop-blur-md border border-white/10 text-white px-5 py-4 rounded-xl shadow-2xl font-medium z-[100] flex items-center gap-3">
+        <div class="bg-brand-cyan/20 p-1.5 rounded-full">
+            <i data-lucide="check" class="w-4 h-4 text-brand-cyan"></i>
+        </div>
+        <span id="toast-msg" class="text-sm">Copiado para a área de transferência!</span>
+    </div>
+
+    <!-- Hero Section -->
+    <header class="relative pt-32 pb-20 px-6 border-b border-white/5 overflow-hidden">
+        <!-- Ambient Glowing Orbs -->
+        <div class="absolute top-[-10%] left-[20%] w-[500px] h-[500px] bg-brand-coral/20 rounded-full blur-[120px] mix-blend-screen pointer-events-none animate-float"></div>
+        <div class="absolute bottom-[-20%] right-[10%] w-[600px] h-[600px] bg-brand-cyan/10 rounded-full blur-[150px] mix-blend-screen pointer-events-none" style="animation: float 8s ease-in-out infinite reverse;"></div>
+
+        <div class="max-w-6xl mx-auto flex flex-col items-center text-center relative z-10">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-brand-silver mb-8 backdrop-blur-sm">
+                <span class="w-2 h-2 rounded-full bg-brand-cyan animate-pulse"></span>
+                MENU A.I // Design System 3.0
+            </div>
+            
+            <div class="w-24 h-24 text-white mb-6 animate-pulse-glow">
+                <!-- Símbolo Isolado no Hero -->
+                <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-[0_0_15px_rgba(255,79,39,0.5)]" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <linearGradient id="heroGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#FF4F27" />
+                            <stop offset="100%" stop-color="#FF7A59" />
+                        </linearGradient>
+                    </defs>
+                    <circle cx="50" cy="18" r="6" fill="url(#heroGrad)" />
+                    <path d="M 26 80 V 42 C 26 35 32 30 38 36 L 50 48 L 62 36 C 68 30 74 35 74 42 V 80" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M 50 48 V 85" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                </svg>
+            </div>
+
+            <h1 class="text-5xl md:text-8xl font-outfit font-semibold mb-6 tracking-tight text-white leading-tight">
+                A Alquimia dos <br/> <span class="text-glow font-bold">Dados Gastronómicos</span>
+            </h1>
+            <p class="text-brand-silver text-lg md:text-xl max-w-2xl font-light leading-relaxed">
+                Repositório oficial da marca MENU A.I. Padrões de interface, vetores precisos e uma estética desenvolvida para liderar o mercado B2B SaaS.
+            </p>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 py-24 space-y-32">
+
+        <!-- 1. BENTO GRID: LOGOTIPOS -->
+        <section>
+            <div class="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
+                <div>
+                    <h2 class="text-3xl font-outfit font-semibold mb-2 text-white">1. Identidade Principal (SVGs)</h2>
+                    <p class="text-brand-silver">Formatos oficiais prontos para implementação em código.</p>
+                </div>
+                <div class="text-xs font-mono text-brand-silver/60">Hover para visualizar ações</div>
+            </div>
+
+            <!-- Grid Bento -->
+            <div class="grid grid-cols-1 md:grid-cols-3 md:grid-rows-2 gap-6 h-auto md:h-[500px]">
+                
+                <!-- Versão Principal (Ocupa 2 linhas, 1 coluna) -->
+                <div class="bento-card md:col-span-1 md:row-span-2 p-8 flex flex-col group relative">
+                    <div class="flex justify-between items-center w-full mb-auto">
+                        <span class="text-sm font-medium text-brand-silver">Versão Vertical</span>
+                        <span class="px-2 py-1 rounded bg-white/5 text-[10px] font-mono text-brand-silver">SVG</span>
+                    </div>
+                    
+                    <div class="flex-1 flex items-center justify-center py-12" id="svg-principal">
+                        <svg viewBox="0 0 200 200" class="w-48 h-48 text-white transition-transform duration-500 group-hover:scale-110 drop-shadow-2xl" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <linearGradient id="aiGradVertical" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#FF4F27" />
+                                    <stop offset="100%" stop-color="#FF7A59" />
+                                </linearGradient>
+                            </defs>
+                            <g transform="translate(50, 15)">
+                                <circle cx="50" cy="18" r="6" fill="url(#aiGradVertical)" />
+                                <path d="M 26 80 V 42 C 26 35 32 30 38 36 L 50 48 L 62 36 C 68 30 74 35 74 42 V 80" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M 50 48 V 85" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                            </g>
+                            <text x="100" y="155" font-family="'Outfit', sans-serif" font-size="34" text-anchor="middle" letter-spacing="1">
+                                <tspan font-weight="600" fill="currentColor">MENU</tspan>
+                                <tspan font-weight="300" fill="#FF4F27"> A.I</tspan>
+                            </text>
+                        </svg>
+                    </div>
+
+                    <div class="absolute inset-x-0 bottom-0 p-6 translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 bg-gradient-to-t from-brand-darkAccent to-transparent">
+                        <button onclick="copyCode('svg-principal')" class="w-full py-3 bg-white text-brand-dark rounded-lg font-medium text-sm flex items-center justify-center gap-2 hover:bg-brand-coral hover:text-white transition-colors shadow-lg">
+                            <i data-lucide="copy" class="w-4 h-4"></i> Copiar Código SVG
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Versão Horizontal (Ocupa 1 linha, 2 colunas) -->
+                <div class="bento-card md:col-span-2 md:row-span-1 p-8 flex flex-col group relative overflow-hidden">
+                    <div class="flex justify-between items-center w-full z-10">
+                        <span class="text-sm font-medium text-brand-silver">Versão Horizontal / UI Header</span>
+                        <span class="px-2 py-1 rounded bg-white/5 text-[10px] font-mono text-brand-silver">SVG</span>
+                    </div>
+
+                    <div class="flex-1 flex items-center justify-center relative z-10" id="svg-horizontal">
+                        <svg viewBox="0 0 300 80" class="w-64 h-auto text-white transition-transform duration-500 group-hover:scale-105 drop-shadow-xl" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <linearGradient id="aiGradHoriz" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#FF4F27" />
+                                    <stop offset="100%" stop-color="#FF7A59" />
+                                </linearGradient>
+                            </defs>
+                            <g transform="translate(0, 5) scale(0.75)">
+                                <circle cx="50" cy="18" r="6" fill="url(#aiGradHoriz)" />
+                                <path d="M 26 80 V 42 C 26 35 32 30 38 36 L 50 48 L 62 36 C 68 30 74 35 74 42 V 80" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M 50 48 V 85" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                            </g>
+                            <text x="85" y="52" font-family="'Outfit', sans-serif" font-size="38" text-anchor="start" letter-spacing="1">
+                                <tspan font-weight="600" fill="currentColor">MENU</tspan>
+                                <tspan font-weight="300" fill="#FF4F27"> A.I</tspan>
+                            </text>
+                        </svg>
+                    </div>
+
+                    <div class="absolute inset-x-0 bottom-0 p-6 translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 z-20 flex justify-end">
+                        <button onclick="copyCode('svg-horizontal')" class="px-6 py-2.5 bg-white text-brand-dark rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-brand-coral hover:text-white transition-colors shadow-lg">
+                            <i data-lucide="copy" class="w-4 h-4"></i> Copiar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Isotipo (Ocupa 1 linha, 1 coluna) -->
+                <div class="bento-card md:col-span-1 md:row-span-1 p-6 flex flex-col group relative">
+                    <div class="flex justify-between items-center w-full mb-auto">
+                        <span class="text-sm font-medium text-brand-silver">App Icon</span>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center" id="svg-isotipo">
+                        <svg viewBox="0 0 100 100" class="w-20 h-20 text-white transition-transform duration-500 group-hover:rotate-[360deg] drop-shadow-lg" xmlns="http://www.w3.org/2000/svg">
+                             <defs>
+                                <linearGradient id="aiGradIso" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="#FF4F27" />
+                                    <stop offset="100%" stop-color="#FF7A59" />
+                                </linearGradient>
+                            </defs>
+                            <circle cx="50" cy="18" r="6" fill="url(#aiGradIso)" />
+                            <path d="M 26 80 V 42 C 26 35 32 30 38 36 L 50 48 L 62 36 C 68 30 74 35 74 42 V 80" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M 50 48 V 85" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <div class="absolute inset-0 bg-brand-darkAccent/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                        <button onclick="copyCode('svg-isotipo')" class="w-12 h-12 bg-white text-brand-dark rounded-full flex items-center justify-center hover:bg-brand-coral hover:text-white transition-colors hover:scale-110">
+                            <i data-lucide="copy" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Versão Light Background (Ocupa 1 linha, 1 coluna) -->
+                <div class="bento-card md:col-span-1 md:row-span-1 p-6 flex flex-col group relative bg-white border-white">
+                    <div class="flex justify-between items-center w-full mb-auto z-10">
+                        <span class="text-sm font-medium text-brand-silver">Fundo Claro</span>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center z-10" id="svg-light">
+                        <!-- Logo escuro para fundos brancos -->
+                        <svg viewBox="0 0 300 80" class="w-48 h-auto text-[#030712] transition-transform duration-500 group-hover:scale-105" xmlns="http://www.w3.org/2000/svg">
+                            <g transform="translate(0, 5) scale(0.75)">
+                                <circle cx="50" cy="18" r="6" fill="#FF4F27" />
+                                <path d="M 26 80 V 42 C 26 35 32 30 38 36 L 50 48 L 62 36 C 68 30 74 35 74 42 V 80" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M 50 48 V 85" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+                            </g>
+                            <text x="85" y="52" font-family="'Outfit', sans-serif" font-size="38" text-anchor="start" letter-spacing="1">
+                                <tspan font-weight="600" fill="currentColor">MENU</tspan>
+                                <tspan font-weight="300" fill="#FF4F27"> A.I</tspan>
+                            </text>
+                        </svg>
+                    </div>
+                    <div class="absolute inset-0 bg-white/90 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center z-20">
+                        <button onclick="copyCode('svg-light')" class="w-12 h-12 bg-brand-dark text-white rounded-full flex items-center justify-center hover:bg-brand-coral transition-colors hover:scale-110 shadow-lg">
+                            <i data-lucide="copy" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 2. CORES E CÓDIGOS -->
+        <section>
+            <div class="mb-10">
+                <h2 class="text-3xl font-outfit font-semibold mb-2 text-white">2. Espectro Cromático</h2>
+                <p class="text-brand-silver">Clique sobre qualquer cor para copiar a variável Hexadecimal ou CSS.</p>
+            </div>
+            
+            <div class="flex flex-wrap md:flex-nowrap gap-4">
+                
+                <!-- Brand Coral -->
+                <div class="flex-1 min-w-[150px] group cursor-pointer" onclick="copyText('#FF4F27')">
+                    <div class="h-32 rounded-2xl bg-brand-coral relative overflow-hidden transition-all duration-300 group-hover:-translate-y-2 group-hover:shadow-[0_10px_30px_rgba(255,79,39,0.4)]">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                        <div class="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                        </div>
+                    </div>
+                    <div class="pt-4">
+                        <p class="font-medium text-white text-sm">Coral A.I</p>
+                        <p class="font-mono text-xs text-brand-silver mt-1">#FF4F27</p>
+                    </div>
+                </div>
+
+                <!-- Dark UI -->
+                <div class="flex-1 min-w-[150px] group cursor-pointer" onclick="copyText('#030712')">
+                    <div class="h-32 rounded-2xl bg-[#030712] border border-white/10 relative overflow-hidden transition-all duration-300 group-hover:-translate-y-2 group-hover:shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+                        <div class="absolute inset-0 bg-gradient-to-t from-white/5 to-transparent"></div>
+                        <div class="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                        </div>
+                    </div>
+                    <div class="pt-4">
+                        <p class="font-medium text-white text-sm">Deep Space</p>
+                        <p class="font-mono text-xs text-brand-silver mt-1">#030712</p>
+                    </div>
+                </div>
+
+                <!-- Cyan Logic -->
+                <div class="flex-1 min-w-[150px] group cursor-pointer" onclick="copyText('#00F0FF')">
+                    <div class="h-32 rounded-2xl bg-brand-cyan relative overflow-hidden transition-all duration-300 group-hover:-translate-y-2 group-hover:shadow-[0_10px_30px_rgba(0,240,255,0.3)]">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+                        <div class="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-black">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                        </div>
+                    </div>
+                    <div class="pt-4">
+                        <p class="font-medium text-white text-sm">Logic Cyan</p>
+                        <p class="font-mono text-xs text-brand-silver mt-1">#00F0FF</p>
+                    </div>
+                </div>
+
+                <!-- Dark Accent -->
+                <div class="flex-1 min-w-[150px] group cursor-pointer" onclick="copyText('#0B1221')">
+                    <div class="h-32 rounded-2xl bg-brand-darkAccent border border-white/5 relative overflow-hidden transition-all duration-300 group-hover:-translate-y-2 group-hover:shadow-[0_10px_30px_rgba(11,18,33,0.8)]">
+                        <div class="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                        </div>
+                    </div>
+                    <div class="pt-4">
+                        <p class="font-medium text-white text-sm">Card Accent</p>
+                        <p class="font-mono text-xs text-brand-silver mt-1">#0B1221</p>
+                    </div>
+                </div>
+
+                <!-- Silver Text -->
+                <div class="flex-1 min-w-[150px] group cursor-pointer" onclick="copyText('#94A3B8')">
+                    <div class="h-32 rounded-2xl bg-brand-silver relative overflow-hidden transition-all duration-300 group-hover:-translate-y-2">
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent"></div>
+                        <div class="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                        </div>
+                    </div>
+                    <div class="pt-4">
+                        <p class="font-medium text-white text-sm">Silver Text</p>
+                        <p class="font-mono text-xs text-brand-silver mt-1">#94A3B8</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. COMPONENTES UI / MOCKUPS -->
+        <section>
+            <div class="mb-10">
+                <h2 class="text-3xl font-outfit font-semibold mb-2 text-white">3. Elementos Dinâmicos (UI Kit)</h2>
+                <p class="text-brand-silver">O comportamento visual da marca aplicado a componentes reais de software SaaS.</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                
+                <!-- Mockup: Receita A.I Card -->
+                <div class="bento-card p-8 bg-gradient-to-br from-brand-darkAccent to-[#060a14]">
+                    <div class="flex justify-between items-start mb-8">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-brand-coral/20 flex items-center justify-center">
+                                <i data-lucide="bot" class="w-5 h-5 text-brand-coral"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-brand-silver">Sugestão de Hoje</h4>
+                                <div class="text-xs font-mono text-brand-cyan flex items-center gap-1 mt-0.5">
+                                    <i data-lucide="zap" class="w-3 h-3"></i> Otimização Ativa
+                                </div>
+                            </div>
+                        </div>
+                        <button class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition">
+                            <i data-lucide="more-horizontal" class="w-4 h-4 text-brand-silver"></i>
+                        </button>
+                    </div>
+
+                    <h3 class="text-2xl font-outfit font-semibold text-white mb-2">Risotto de Funghi Sustentável</h3>
+                    <p class="text-brand-silver text-sm mb-6 line-clamp-2">Aproveitamento integral de talos com infusão a vácuo, calculado para reduzir custo de porção em 18%.</p>
+
+                    <div class="flex flex-wrap gap-2 mb-8">
+                        <span class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white flex items-center gap-1.5"><i data-lucide="clock" class="w-3 h-3 text-brand-silver"></i> 35 min</span>
+                        <span class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white flex items-center gap-1.5"><i data-lucide="dollar-sign" class="w-3 h-3 text-brand-cyan"></i> Custo: Alto LTV</span>
+                        <span class="px-3 py-1.5 rounded-lg bg-brand-coral/10 border border-brand-coral/20 text-xs text-brand-coral font-medium">98% Match A.I</span>
+                    </div>
+
+                    <button class="w-full py-3 rounded-xl bg-white text-brand-dark font-medium text-sm hover:bg-brand-coral hover:text-white transition-all duration-300 shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(255,79,39,0.4)]">
+                        Adicionar ao Cardápio Semanal
+                    </button>
+                </div>
+
+                <!-- Mockup: Dashboard Chart -->
+                <div class="bento-card p-8 flex flex-col justify-between">
+                    <div>
+                        <h4 class="text-lg font-outfit font-medium text-white mb-1">Análise de Desperdício</h4>
+                        <p class="text-xs text-brand-silver">Monitoramento em tempo real (Semana 42)</p>
+                    </div>
+
+                    <div class="flex items-center justify-center my-8 relative">
+                        <!-- CSS Circular Progress Mockup -->
+                        <div class="relative w-40 h-40 rounded-full flex items-center justify-center bg-brand-dark" style="background: conic-gradient(#00F0FF 0deg 270deg, #1e293b 270deg 360deg);">
+                            <div class="absolute w-32 h-32 bg-brand-darkAccent rounded-full flex flex-col items-center justify-center shadow-inner">
+                                <span class="text-3xl font-outfit font-bold text-white">75%</span>
+                                <span class="text-[10px] uppercase tracking-widest text-brand-silver mt-1">Eficiência</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center text-sm">
+                            <div class="flex items-center gap-2 text-brand-silver">
+                                <div class="w-2 h-2 rounded-full bg-brand-cyan"></div>
+                                Insumos Utilizados
+                            </div>
+                            <span class="font-mono text-white">75%</span>
+                        </div>
+                        <div class="flex justify-between items-center text-sm">
+                            <div class="flex items-center gap-2 text-brand-silver">
+                                <div class="w-2 h-2 rounded-full bg-slate-700"></div>
+                                Margem de Segurança
+                            </div>
+                            <span class="font-mono text-white">25%</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 4. TIPOGRAFIA MONO E SANS -->
+        <section class="pb-20">
+            <div class="mb-10">
+                <h2 class="text-3xl font-outfit font-semibold mb-2 text-white">4. Hierarquia Tipográfica</h2>
+                <p class="text-brand-silver">Fontes definidas para garantir precisão técnica e leitura imersiva.</p>
+            </div>
+
+            <div class="bento-card p-0 overflow-hidden flex flex-col md:flex-row">
+                <!-- Outfit Area -->
+                <div class="flex-1 p-10 border-b md:border-b-0 md:border-r border-white/10">
+                    <div class="flex items-center gap-3 mb-8">
+                        <span class="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white font-outfit font-bold">Aa</span>
+                        <div>
+                            <h3 class="font-outfit font-medium text-lg text-white">Outfit</h3>
+                            <p class="text-xs text-brand-silver">Headings & Titles</p>
+                        </div>
+                    </div>
+                    <div class="space-y-4 text-white">
+                        <p class="font-outfit font-light text-3xl">Menu Generation</p>
+                        <p class="font-outfit font-normal text-3xl text-brand-silver">Menu Generation</p>
+                        <p class="font-outfit font-semibold text-3xl">Menu Generation</p>
+                    </div>
+                </div>
+
+                <!-- JetBrains Mono Area -->
+                <div class="flex-1 p-10">
+                    <div class="flex items-center gap-3 mb-8">
+                        <span class="w-8 h-8 rounded-lg bg-brand-coral/10 flex items-center justify-center text-brand-coral font-mono text-sm">{' '}</span>
+                        <div>
+                            <h3 class="font-mono font-medium text-sm text-brand-cyan">JetBrains Mono</h3>
+                            <p class="text-xs text-brand-silver">Data, Code & Numbers</p>
+                        </div>
+                    </div>
+                    <div class="space-y-3 bg-black/30 p-5 rounded-xl border border-white/5">
+                        <p class="font-mono text-sm text-brand-silver"><span class="text-pink-500">const</span> <span class="text-blue-400">generateMenu</span> = <span class="text-yellow-300">async</span> () <span class="text-brand-cyan">=></span> {</p>
+                        <p class="font-mono text-sm text-brand-silver ml-4"><span class="text-pink-500">await</span> ai.<span class="text-blue-400">optimize</span>(ingredients);</p>
+                        <p class="font-mono text-sm text-brand-silver">}</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. REGRAS DE CONTRASTE E ACESSIBILIDADE -->
+        <section class="pb-20">
+            <div class="mb-10">
+                <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-cyan/10 border border-brand-cyan/20 text-xs font-mono text-brand-cyan mb-4">
+                    <i data-lucide="eye" class="w-3 h-3"></i> UX Guidelines
+                </div>
+                <h2 class="text-3xl font-outfit font-semibold mb-2 text-white">5. Acessibilidade & Contraste</h2>
+                <p class="text-brand-silver max-w-2xl">Regras estritas de combinação de cores (Textos vs. Fundos) para garantir legibilidade (padrão WCAG) e evitar atrito visual prolongado no uso diário do software.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- DO's -->
+                <div class="bento-card p-8 border-t-2 border-t-emerald-500/50">
+                    <h3 class="text-emerald-400 font-semibold mb-6 flex items-center gap-2"><i data-lucide="check-circle-2" class="w-5 h-5"></i> Combinações Aprovadas (DO's)</h3>
+                    <div class="space-y-4">
+                        <div class="p-5 bg-brand-darkAccent border border-white/5 rounded-xl flex items-center justify-between">
+                            <span class="text-white font-medium text-sm">Texto Branco no Fundo Dark Accent</span>
+                            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-1 rounded uppercase tracking-wider">Passo AAA</span>
+                        </div>
+                        <div class="p-5 bg-[#F8FAFC] border border-black/5 rounded-xl flex items-center justify-between">
+                            <span class="text-brand-dark font-medium text-sm">Texto Dark Space em Fundo Claro</span>
+                            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-1 rounded uppercase tracking-wider">Passo AAA</span>
+                        </div>
+                        <div class="p-5 bg-brand-coral/10 border border-brand-coral/20 rounded-xl flex items-center justify-between">
+                            <span class="text-brand-coral font-medium text-sm">Texto Coral em Fundo Coral Claro (Tags)</span>
+                            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-1 rounded uppercase tracking-wider">Passo AA</span>
+                        </div>
+                        <div class="p-5 bg-brand-dark rounded-xl flex items-center justify-between border border-white/5">
+                            <span class="text-brand-silver font-medium text-sm">Texto Silver no Fundo Dark Base</span>
+                            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-2 py-1 rounded uppercase tracking-wider">Passo AA</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- DONT's -->
+                <div class="bento-card p-8 border-t-2 border-t-rose-500/50">
+                    <h3 class="text-rose-400 font-semibold mb-6 flex items-center gap-2"><i data-lucide="x-circle" class="w-5 h-5"></i> Combinações Proibidas (DON'Ts)</h3>
+                    <div class="space-y-4">
+                        <div class="p-5 bg-brand-cyan rounded-xl flex items-center justify-between opacity-80">
+                            <span class="text-brand-coral font-medium text-sm">Coral em Fundo Cyan (Clash Visual)</span>
+                            <span class="text-[10px] font-mono text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded uppercase tracking-wider">Falha</span>
+                        </div>
+                        <div class="p-5 bg-brand-dark rounded-xl flex items-center justify-between border border-white/5 opacity-80">
+                            <span class="text-brand-darkAccent font-medium text-sm">Dark Accent em Dark Base (Invisível)</span>
+                            <span class="text-[10px] font-mono text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded uppercase tracking-wider">Falha</span>
+                        </div>
+                        <div class="p-5 bg-[#F8FAFC] rounded-xl flex items-center justify-between opacity-80">
+                            <span class="text-brand-silver font-medium text-sm">Silver Text no Fundo Claro (Ilegível)</span>
+                            <span class="text-[10px] font-mono text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded uppercase tracking-wider">Falha</span>
+                        </div>
+                        <div class="p-5 bg-brand-coral rounded-xl flex items-center justify-between opacity-80">
+                            <span class="text-brand-cyan font-medium text-sm">Cyan no Fundo Coral (Vibração Ruim)</span>
+                            <span class="text-[10px] font-mono text-rose-500 bg-rose-500/10 border border-rose-500/20 px-2 py-1 rounded uppercase tracking-wider">Falha</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. SISTEMA DE BOTÕES E ESTADOS -->
+        <section class="pb-10">
+            <div class="mb-10">
+                <h2 class="text-3xl font-outfit font-semibold mb-2 text-white">6. Guias de Interação (Botões)</h2>
+                <p class="text-brand-silver max-w-2xl">Hierarquia visual de ações. A interface não deve competir consigo mesma; utilize botões primários com moderação para guiar a atenção do utilizador.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <!-- Botão Primário -->
+                <div class="bento-card p-6 flex flex-col items-center justify-between min-h-[220px] text-center">
+                    <div class="w-full">
+                        <span class="text-brand-coral text-xs font-mono mb-2 block">.btn-primary</span>
+                        <h4 class="text-white font-medium text-sm mb-1">Ação Principal</h4>
+                        <p class="text-[11px] text-brand-silver leading-relaxed mb-6">Apenas 1 por ecrã (view). Usado para Salvar, Gerar ou Confirmar formulários.</p>
+                    </div>
+                    <button class="w-full py-2.5 rounded-lg bg-brand-coral text-white font-medium text-sm hover:bg-brand-coralGlow transition-all duration-300 shadow-[0_0_15px_rgba(255,79,39,0.3)] hover:shadow-[0_0_25px_rgba(255,79,39,0.5)] hover:-translate-y-0.5">
+                        Gerar Cardápio A.I
+                    </button>
+                </div>
+
+                <!-- Botão Secundário -->
+                <div class="bento-card p-6 flex flex-col items-center justify-between min-h-[220px] text-center">
+                    <div class="w-full">
+                        <span class="text-brand-cyan text-xs font-mono mb-2 block">.btn-secondary</span>
+                        <h4 class="text-white font-medium text-sm mb-1">Ação de Suporte</h4>
+                        <p class="text-[11px] text-brand-silver leading-relaxed mb-6">Ações paralelas importantes. Usado para Cancelar, Exportar, Filtrar.</p>
+                    </div>
+                    <button class="w-full py-2.5 rounded-lg bg-white/5 border border-white/10 text-white font-medium text-sm hover:bg-white/10 transition-all duration-300 hover:border-white/20">
+                        Exportar Relatório
+                    </button>
+                </div>
+
+                <!-- Botão Tertiary/Ghost -->
+                <div class="bento-card p-6 flex flex-col items-center justify-between min-h-[220px] text-center">
+                    <div class="w-full">
+                        <span class="text-brand-silver text-xs font-mono mb-2 block">.btn-ghost</span>
+                        <h4 class="text-white font-medium text-sm mb-1">Terciário / Ghost</h4>
+                        <p class="text-[11px] text-brand-silver leading-relaxed mb-6">Ações menos frequentes e não destrutivas. Editar perfil, Mais opções.</p>
+                    </div>
+                    <button class="w-full py-2.5 rounded-lg text-brand-silver font-medium text-sm hover:bg-white/5 hover:text-white transition-all duration-300 flex items-center justify-center gap-2">
+                        <i data-lucide="settings-2" class="w-4 h-4"></i> Ajustar Dieta
+                    </button>
+                </div>
+
+                <!-- Botão Disabled -->
+                <div class="bento-card p-6 flex flex-col items-center justify-between min-h-[220px] text-center opacity-80">
+                    <div class="w-full">
+                        <span class="text-brand-silver/50 text-xs font-mono mb-2 block">.btn-disabled</span>
+                        <h4 class="text-brand-silver/70 font-medium text-sm mb-1">Estado Desativado</h4>
+                        <p class="text-[11px] text-brand-silver/50 leading-relaxed mb-6">Prevenção de erro. Ação indisponível enquanto carrega ou falta dados.</p>
+                    </div>
+                    <button disabled class="w-full py-2.5 rounded-lg bg-white/5 text-white/30 font-medium text-sm cursor-not-allowed">
+                        Processando A.I...
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="border-t border-white/10 py-10 mt-10">
+        <div class="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-2 text-brand-silver text-sm">
+                <svg viewBox="0 0 100 100" class="w-5 h-5 text-white" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="18" r="6" fill="#FF4F27" />
+                    <path d="M 26 80 V 42 C 26 35 32 30 38 36 L 50 48 L 62 36 C 68 30 74 35 74 42 V 80" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+                    <path d="M 50 48 V 85" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+                </svg>
+                <span>© MENU A.I Design System v3.0</span>
+            </div>
+            <div class="text-xs font-mono text-brand-silver/50">
+                STRICTLY CONFIDENTIAL
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function copyCode(elementId) {
+            const el = document.getElementById(elementId);
+            const content = el.innerHTML.trim();
+            const temp = document.createElement('textarea');
+            temp.value = content;
+            document.body.appendChild(temp);
+            temp.select();
+            
+            try {
+                document.execCommand('copy');
+                showToast('SVG transferido para o clipboard!');
+            } catch (err) {
+                navigator.clipboard.writeText(content).then(() => {
+                    showToast('SVG transferido para o clipboard!');
+                });
+            }
+            document.body.removeChild(temp);
+        }
+
+        function copyText(text) {
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            try {
+                document.execCommand('copy');
+                showToast(`HEX ${text} copiado!`);
+            } catch (err) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast(`HEX ${text} copiado!`);
+                });
+            }
+            document.body.removeChild(temp);
+        }
+    </script>
+</body>
+</html>

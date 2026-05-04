@@ -1,0 +1,140 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: menuai/app:latest
+    environment:
+      SUPABASE_DB_URL: ${SUPABASE_DB_URL}
+      DATABASE_URL: ${SUPABASE_DB_URL}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+      TOKEN_EXPIRE_HOURS: ${TOKEN_EXPIRE_HOURS:-0}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_DEFAULT_MODEL: ${OPENROUTER_DEFAULT_MODEL:-queen-3.6}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1536}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://openrouter.ai/api/v1}
+      PORT: 8000
+      DEBUG: "false"
+      CREATE_ALL_ON_START: "false"
+      DEMO_GERAR_SEM_AUTH: "false"
+      ALLOW_OPEN_REGISTRO: "true"
+      DEFAULT_EMPRESA_ID: ${DEFAULT_EMPRESA_ID}
+      PYTHONPATH: /app
+      DB_ECHO: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS}
+    networks:
+      - menu
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=menu"
+        - "traefik.http.routers.menuai-app.rule=Host(`backend.neuros.my`)"
+        - "traefik.http.routers.menuai-app.entrypoints=websecure"
+        - "traefik.http.routers.menuai-app.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.menuai-app.service=menuai-app"
+        - "traefik.http.services.menuai-app.loadbalancer.server.port=8000"
+        - "traefik.http.services.menuai-app.loadbalancer.healthcheck.path=/api/health"
+        - "traefik.http.services.menuai-app.loadbalancer.healthcheck.interval=15s"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=5)\""]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  admin:
+    build:
+      context: .
+      dockerfile: Dockerfile.admin
+    image: menuai/admin:latest
+    environment:
+      API_BASE_URL: http://app:8000
+      PORT: 8001
+      HOSTNAME: 0.0.0.0
+    networks:
+      - menu
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=menu"
+        - "traefik.http.routers.menuai-admin.rule=Host(`admin.neuros.my`)"
+        - "traefik.http.routers.menuai-admin.entrypoints=websecure"
+        - "traefik.http.routers.menuai-admin.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.menuai-admin.service=menuai-admin"
+        - "traefik.http.services.menuai-admin.loadbalancer.server.port=8001"
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8001/login || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  menu:
+    build:
+      context: .
+      dockerfile: Dockerfile.menu
+    image: menuai/menu:latest
+    environment:
+      NEXT_PUBLIC_API_URL: https://backend.neuros.my
+      NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      PORT: 8002
+      HOSTNAME: 0.0.0.0
+    networks:
+      - menu
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+      placement:
+        constraints:
+          - node.role == manager
+      labels:
+        - "traefik.enable=true"
+        - "traefik.docker.network=menu"
+        - "traefik.http.routers.menuai-menu.rule=Host(`menu.neuros.my`)"
+        - "traefik.http.routers.menuai-menu.entrypoints=websecure"
+        - "traefik.http.routers.menuai-menu.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.menuai-menu.service=menuai-menu"
+        - "traefik.http.services.menuai-menu.loadbalancer.server.port=8002"
+    depends_on:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8002/login || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  menu:
+    external: true
+    name: menu

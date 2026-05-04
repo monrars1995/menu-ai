@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<section id="top" class="section">
+  <h1 class="section-title">Painel administrativo</h1>
+  <p class="section-desc">
+    Console administrativo Menu.AI — mesmos endpoints de domínio (<code>/api/…</code>) com autenticação de administrador.
+    Use o login abaixo ou o Swagger para operações avançadas.
+  </p>
+  <div class="card card--inset">
+    <p class="muted" style="margin:0;">
+      Documentação interativa: <a href="{{ docs_url }}">OpenAPI (Swagger)</a>
+      · <a href="/api/health">GET /api/health</a>
+    </p>
+  </div>
+</section>
+
+{% if debug %}
+<div class="card dev-banner section">
+  <strong>Modo desenvolvimento</strong> (<code>DEBUG=true</code>)
+  {% if dev_token %}
+  <p class="muted" style="margin: 0.5rem 0 0 0;">
+    Cole no Swagger em <strong>Authorize</strong> como <code>Bearer &lt;token&gt;</code>, ou no cabeçalho <code>Authorization</code>.
+    Usuário: <code>{{ dev_email }}</code>
+  </p>
+  <pre class="token-pre" id="dev-token-block">{{ dev_token }}</pre>
+  <div class="form-actions">
+    <button type="button" class="btn btn-secondary" id="btn-copy-dev-token">Copiar token</button>
+    <button type="button" class="btn btn-secondary" id="btn-use-dev-token">Usar nesta sessão</button>
+  </div>
+  {% else %}
+  <p style="margin: 0.5rem 0 0 0;">
+    Nenhum usuário <code>super_admin</code> ou <code>admin</code> no banco. Crie um via <code>POST /api/auth/registro</code>
+    (com <code>ALLOW_OPEN_REGISTRO=true</code>) ou configure <code>MENUAI_ADMIN_API_KEY</code>.
+  </p>
+  {% endif %}
+  {% if admin_api_key_configured %}
+  <p class="muted" style="margin: 0.75rem 0 0 0;">
+    Alternativa: cabeçalho <code>X-Admin-Api-Key</code> (valor de <code>MENUAI_ADMIN_API_KEY</code>).
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if not db_ok %}
+<div class="card warn-banner section">
+  <strong>Banco de dados indisponível</strong> — verifique <code>DATABASE_URL</code> e a rede.
+</div>
+{% endif %}
+
+<section id="login" class="section">
+  <h2 class="section-title">Login</h2>
+  <p class="section-desc">Autentique-se com um usuário <code>admin</code> ou <code>super_admin</code>. Também é possível operar com <code>X-Admin-Api-Key</code> quando configurada no servidor.</p>
+  <div class="card">
+    <form id="login-form" class="form-grid">
+      <label>E-mail
+        <input type="email" id="login-email" name="email" autocomplete="username" required/>
+      </label>
+      <label>Senha
+        <input type="password" id="login-senha" name="senha" autocomplete="current-password" required/>
+      </label>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Entrar</button>
+        <button type="button" class="btn btn-secondary" id="btn-logout">Sair</button>
+      </div>
+      <p id="login-msg" class="muted" style="margin:0;"></p>
+    </form>
+    {% if admin_api_key_configured %}
+    <div class="admin-key-block">
+      <div>
+        <h3 class="subsection-title">Sessão por chave administrativa</h3>
+        <p class="muted" style="margin:0;">Use a chave configurada em <code>MENUAI_ADMIN_API_KEY</code> quando não quiser operar via JWT.</p>
+      </div>
+      <div class="form-grid compact-grid">
+        <label>Admin API Key
+          <input type="password" id="admin-api-key" autocomplete="off" placeholder="Cole a chave administrativa"/>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="btn-save-admin-key">Usar chave</button>
+          <button type="button" class="btn btn-secondary" id="btn-clear-admin-key">Limpar chave</button>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section id="overview" class="section">
+  <h2 class="section-title">Visão geral</h2>
+  <p class="section-desc">Resumo operacional do escopo administrativo atual.</p>
+  <div class="card">
+    <div id="overview-root" class="overview-root">
+      <p class="muted">Faça login para carregar o resumo.</p>
+    </div>
+  </div>
+</section>
+
+<section id="empresas" class="section">
+  <h2 class="section-title">Empresas</h2>
+  <p class="section-desc">Primeiras linhas da lista (limite 20). Operações completas no Swagger.</p>
+  <p id="tbody-empresas-status" class="muted"></p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Segmento</th>
+          <th>Ativo</th>
+          <th>ID</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-empresas"></tbody>
+    </table>
+  </div>
+  <p class="swagger-link"><a href="{{ docs_url }}#/Empresas">Abrir no Swagger</a></p>
+</section>
+
+<section id="contratos" class="section">
+  <h2 class="section-title">Contratos</h2>
+  <p class="section-desc">Contratos visíveis conforme sua empresa e perfil.</p>
+  <p id="tbody-contratos-status" class="muted"></p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Nº contrato</th>
+          <th>Ativo</th>
+          <th>Empresa</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-contratos"></tbody>
+    </table>
+  </div>
+  <p class="swagger-link"><a href="{{ docs_url }}#/Contratos">Abrir no Swagger</a></p>
+</section>
+
+<section id="ingredientes" class="section">
+  <h2 class="section-title">Ingredientes</h2>
+  <p class="section-desc">Insumos da empresa e globais.</p>
+  <p id="tbody-ingredientes-status" class="muted"></p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Categoria</th>
+          <th>Custo unit.</th>
+          <th>Ativo</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-ingredientes"></tbody>
+    </table>
+  </div>
+  <p class="swagger-link"><a href="{{ docs_url }}#/Ingredientes">Abrir no Swagger</a></p>
+</section>
+
+<section id="fichas" class="section">
+  <h2 class="section-title">Fichas técnicas</h2>
+  <p class="section-desc">Receitas e custos por porção.</p>
+  <p id="tbody-fichas-status" class="muted"></p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Categoria</th>
+          <th>Custo / porção</th>
+          <th>Ativo</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-fichas"></tbody>
+    </table>
+  </div>
+  <p class="swagger-link"><a href="{{ docs_url }}#/Fichas%20Técnicas">Abrir no Swagger</a></p>
+</section>
+
+<section id="cardapios" class="section">
+  <h2 class="section-title">Cardápios</h2>
+  <p class="section-desc">Cardápios gerados e status do fluxo.</p>
+  <p id="tbody-cardapios-status" class="muted"></p>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>Status</th>
+          <th>Dias</th>
+          <th>Custo médio / dia</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-cardapios"></tbody>
+    </table>
+  </div>
+  <p class="swagger-link"><a href="{{ docs_url }}#/Cardápios">Abrir no Swagger</a></p>
+</section>
+
+<section id="pipeline" class="section">
+  <h2 class="section-title">Pipeline de geração</h2>
+  <p class="section-desc">Sete etapas sequenciais do fluxo LiteLLM (somente leitura).</p>
+  <div class="card">
+    <div class="pipeline-steps">
+      {% for step in pipeline_steps %}
+      <div class="pipeline-step">
+        <span class="pipeline-step-num">{{ step.ordem }}</span>
+        <div>{{ step.label }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<section id="llm" class="section">
+  <h2 class="section-title">Modelos LLM</h2>
+  <p class="section-desc">Ative ou desative modelos no catálogo após o login (requer perfil administrador).</p>
+  <div class="card">
+    <div class="form-actions" style="margin-bottom:0.75rem;">
+      <button type="button" class="btn btn-secondary" id="btn-refresh-data">Atualizar dados</button>
+    </div>
+    <div id="llm-models-root">
+      <p class="muted">Carregando…</p>
+    </div>
+  </div>
+  <p class="swagger-link"><a href="{{ docs_url }}#/Admin%20%E2%80%94%20LLM">Abrir no Swagger</a></p>
+</section>
+
+<section id="knowledge" class="section">
+  <h2 class="section-title">Supabase vetor</h2>
+  <p class="section-desc">Estatísticas, reindexação do corpus e busca semântica sobre contratos, fichas e cardápios.</p>
+  <div class="card">
+    <div class="form-actions" style="margin-bottom:0.75rem;">
+      <button type="button" class="btn btn-secondary" id="btn-refresh-knowledge">Atualizar vetor</button>
+      <button type="button" class="btn btn-primary" id="btn-reindex-knowledge">Reindexar tudo</button>
+    </div>
+    <div id="knowledge-stats-root">
+      <p class="muted">Faça login para carregar a base vetorial.</p>
+    </div>
+    <div class="admin-key-block" style="margin-top:1rem;">
+      <div>
+        <h3 class="subsection-title">Busca semântica</h3>
+        <p class="muted" style="margin:0;">Recupera contexto similar com pgvector no Supabase.</p>
+      </div>
+      <div class="form-grid compact-grid">
+        <label>Consulta
+          <input type="text" id="knowledge-query" autocomplete="off" placeholder="Ex.: contrato com restrição a carne suína"/>
+        </label>
+        <label>Fonte
+          <select id="knowledge-source-type">
+            <option value="">Todas</option>
+            <option value="contrato">Contratos</option>
+            <option value="ficha">Fichas</option>
+            <option value="cardapio">Cardápios</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="btn-search-knowledge">Pesquisar</button>
+        </div>
+      </div>
+      <div id="knowledge-search-root" class="muted" style="margin-top:0.75rem;">Nenhuma busca executada.</div>
+    </div>
+  </div>
+  <p class="swagger-link"><a href="{{ docs_url }}#/Admin%20%E2%80%94%20Knowledge">Abrir no Swagger</a></p>
+</section>
+
+<section id="docs" class="section">
+  <h2 class="section-title">Documentação e autenticação</h2>
+  <div class="card">
+    <ul style="margin:0; padding-left:1.25rem; line-height:1.8;">
+      <li><a href="{{ docs_url }}">OpenAPI (Swagger)</a> — explore e teste os endpoints.</li>
+      <li>Envie <code>Authorization: Bearer &lt;JWT&gt;</code> para usuários <code>admin</code> ou <code>super_admin</code>.</li>
+      <li>Se configurado: cabeçalho <code>X-Admin-Api-Key</code> com o valor de <code>MENUAI_ADMIN_API_KEY</code>.</li>
+      <li><a href="/api/admin/meta/pipeline-steps">GET /api/admin/meta/pipeline-steps</a> — metadados das etapas (requer auth).</li>
+    </ul>
+  </div>
+</section>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.getElementById("btn-copy-dev-token");
+  var block = document.getElementById("dev-token-block");
+  if (btn && block && navigator.clipboard) {
+    btn.addEventListener("click", function () {
+      navigator.clipboard.writeText(block.textContent.trim()).then(function () {
+        btn.textContent = "Copiado!";
+        setTimeout(function () { btn.textContent = "Copiar token"; }, 2000);
+      });
+    });
+  }
+  var useBtn = document.getElementById("btn-use-dev-token");
+  if (useBtn && block) {
+    useBtn.addEventListener("click", function () {
+      localStorage.setItem("menuai_admin_token", block.textContent.trim());
+      window.location.hash = "#overview";
+      window.location.reload();
+    });
+  }
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,84 @@
+# === Ambiente Virtual Python ===
+venv/
+env/
+.venv/
+ENV/
+
+# === Arquivos de Ambiente (SEGREDOS - NUNCA COMMITAR) ===
+.env
+.env.local
+.env.*.local
+*.env
+
+# === Banco de Dados (arquivos grandes/locais) ===
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# === Cache Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# === Logs ===
+*.log
+logs/
+server.log
+
+# === Arquivos grandes e temporários ===
+get-pip.py
+*.xlsx
+!template_fichas_tecnicas_menuai.xlsx
+dummy.pdf
+
+# === macOS ===
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# === VS Code ===
+.vscode/settings.json
+.vscode/launch.json
+*.code-workspace
+
+# === Uploads e dados locais ===
+data/uploads/
+static/uploads/
+
+# === Arquivos de distribuição Python ===
+dist/
+build/
+*.egg-info/
+*.egg
+.eggs/
+
+# === Pytest / Testes ===
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# === Jupyter ===
+.ipynb_checkpoints/
+
+# === IDEs ===
+.idea/
+*.swp
+*.swo
+
+# === Node.js ===
+node_modules/
+.next/
+menu/.next/
+admin/.next/
+*.tsbuildinfo
