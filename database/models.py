@@ -635,3 +635,70 @@ class LLMAuditLog(Base):
     def __repr__(self):
         return f"<LLMAuditLog {self.model_used} success={self.success}>"
 
+
+# ============================================================
+# 15. CHAT CONVERSACIONAL (HITL & Sessões)
+# ============================================================
+class SessaoChat(Base):
+    """
+    Sessão de chat para persistir contexto de interações (HITL) de um usuário,
+    opcionalmente atrelada a um job de geração.
+    """
+    __tablename__ = "sessoes_chat"
+
+    id              = Column(String(36), primary_key=True, default=_uuid)
+    usuario_id      = Column(String(36), ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    job_id          = Column(String(50), ForeignKey("jobs_agente.job_id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    titulo          = Column(String(200), nullable=True)
+    contexto_json   = Column(JSON, nullable=True)  # Armazena estado parcial/final como ContratoAnalise
+    status          = Column(
+        Enum("ativa", "concluida", "arquivada", name="status_sessao_chat_enum"),
+        default="ativa", nullable=False
+    )
+    
+    created_at      = Column(DateTime, default=_now, nullable=False)
+    updated_at      = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    # Relacionamentos
+    usuario         = relationship("Usuario", foreign_keys=[usuario_id])
+    # Como job_id na SessaoChat referencia jobs_agente.job_id (que não é PK mas é unique), 
+    # declaramos com primaryjoin
+    job             = relationship("JobAgente", foreign_keys=[job_id], primaryjoin="SessaoChat.job_id == JobAgente.job_id")
+    mensagens       = relationship("MensagemChat", back_populates="sessao", cascade="all, delete-orphan", order_by="MensagemChat.created_at")
+
+    def __repr__(self):
+        return f"<SessaoChat {self.id} usuario={self.usuario_id}>"
+
+
+class MensagemChat(Base):
+    """
+    Mensagens individuais dentro de uma sessão de chat.
+    Suporta roles do formato OpenAI e metadata para registrar 'thoughts'.
+    """
+    __tablename__ = "mensagens_chat"
+
+    id              = Column(String(36), primary_key=True, default=_uuid)
+    sessao_id       = Column(String(36), ForeignKey("sessoes_chat.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    role            = Column(
+        Enum("user", "assistant", "system", "tool", name="role_mensagem_chat_enum"),
+        nullable=False
+    )
+    content         = Column(Text, nullable=False)
+    
+    # Suporte a Tool Calling no histórico
+    tool_calls      = Column(JSON, nullable=True) 
+    tool_call_id    = Column(String(100), nullable=True)
+    
+    # Metadata para armazenar thoughts, latency, tokens
+    metadata_json   = Column(JSON, nullable=True) 
+    
+    created_at      = Column(DateTime, default=_now, nullable=False)
+
+    # Relacionamentos
+    sessao          = relationship("SessaoChat", back_populates="mensagens")
+
+    def __repr__(self):
+        return f"<MensagemChat {self.id[:8]} role={self.role}>"
+
