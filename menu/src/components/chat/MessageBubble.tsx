@@ -48,6 +48,10 @@ export interface MessageBubbleProps {
   pipelineProgress?: number;
   pensamento?: string;
   confirmData?: ConfirmData;
+  hitlData?: {
+    resumo: any;
+    jobId: string;
+  };
   resultData?: ResultData;
   erro?: string;
   onSelectContrato?: (id: string) => void;
@@ -62,6 +66,7 @@ export interface MessageBubbleProps {
   onStartGeneration?: () => void;
   onAdjust?: () => void;
   onNewGeneration?: () => void;
+  onConfirmHitl?: (confirm: boolean, ajustes?: string) => void;
 }
 
 export function MessageBubble(props: MessageBubbleProps) {
@@ -99,11 +104,20 @@ export function MessageBubble(props: MessageBubbleProps) {
           </div>
         )}
         {type === "pipeline" && (
-          <PipelineView
-            step={props.pipelineStep ?? 0}
-            progress={props.pipelineProgress ?? 0}
-            pensamento={props.pensamento}
-          />
+          <>
+            <PipelineView
+              step={props.pipelineStep ?? 0}
+              progress={props.pipelineProgress ?? 0}
+              pensamento={props.pensamento}
+            />
+            {props.hitlData && (
+              <HitlConfirmCard
+                data={props.hitlData}
+                onConfirm={(ajustes) => props.onConfirmHitl?.(true, ajustes)}
+                onReject={() => props.onConfirmHitl?.(false)}
+              />
+            )}
+          </>
         )}
         {type === "confirm" && (
           <ConfirmCard
@@ -500,6 +514,73 @@ function ErrorCard({ erro }: { erro: string }) {
       <div className="flex items-start gap-2.5">
         <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-600" />
         <p className="text-sm text-red-700">{erro}</p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HITL Confirm Card
+// ---------------------------------------------------------------------------
+
+function HitlConfirmCard({
+  data,
+  onConfirm,
+  onReject,
+}: {
+  data: { resumo: any; jobId: string };
+  onConfirm: (ajustes?: string) => void;
+  onReject: () => void;
+}) {
+  const [ajustes, setAjustes] = useState("");
+
+  return (
+    <div className="rounded-xl border border-amber-200/60 bg-amber-50 p-5 space-y-4 mt-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+          <AlertCircle size={18} className="text-amber-600" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-amber-900">Analise do Contrato Concluida</p>
+          <p className="text-xs text-amber-800/80 mt-1">
+            Por favor, verifique as regras extraidas do contrato antes de prosseguirmos com a geracao do cardapio.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-white/60 p-3 text-xs leading-relaxed text-ink/80 whitespace-pre-wrap max-h-48 overflow-y-auto border border-amber-200/40">
+        {typeof data.resumo === "string"
+          ? data.resumo
+          : data.resumo.texto || JSON.stringify(data.resumo, null, 2)}
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-amber-900 block">
+          Ajustes adicionais (Opcional):
+        </label>
+        <textarea
+          className="w-full rounded-lg border border-amber-200/60 bg-white p-3 text-sm text-ink placeholder-ink-muted-48 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400 resize-none"
+          rows={2}
+          placeholder="Ex: Nao esqueca de variar as proteinas..."
+          value={ajustes}
+          onChange={(e) => setAjustes(e.target.value)}
+        />
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => onConfirm(ajustes)}
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-2"
+        >
+          <CheckCircle2 size={16} />
+          Confirmar e Continuar
+        </button>
+        <button
+          onClick={onReject}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-amber-200 bg-white px-4 py-3 text-sm font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+        >
+          Cancelar
+        </button>
       </div>
     </div>
   );

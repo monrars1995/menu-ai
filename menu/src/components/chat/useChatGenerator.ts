@@ -17,6 +17,7 @@ export type ChatPhase =
   | "config-restrictions"
   | "confirm"
   | "generating"
+  | "hitl-confirm"
   | "result"
   | "error"
   | "uploading";
@@ -41,6 +42,10 @@ export interface ChatMessage {
   pipelineProgress?: number;
   pensamento?: string;
   confirmData?: ConfirmData;
+  hitlData?: {
+    resumo: any;
+    jobId: string;
+  };
   resultData?: ResultData;
   erro?: string;
 }
@@ -451,6 +456,12 @@ export function useChatGenerator() {
           if (data.progresso !== undefined)
             updates.pipelineProgress = data.progresso;
           if (data.pensamento) updates.pensamento = data.pensamento;
+          if (data.type === "aguardando_confirmacao") {
+            updates.hitlData = {
+              resumo: data.resumo,
+              jobId: jobId,
+            };
+          }
           if (data.status === "concluido") {
             updates.pipelineStep = 7;
             updates.pipelineProgress = 100;
@@ -511,6 +522,10 @@ export function useChatGenerator() {
           }
           return updates;
         });
+
+        if (data.type === "aguardando_confirmacao") {
+          setState((s) => ({ ...s, phase: "hitl-confirm" }));
+        }
 
         if (data.status === "concluido" || data.status === "erro") {
           es.close();
@@ -584,6 +599,34 @@ export function useChatGenerator() {
     );
   }
 
+  function confirmHitl(confirm: boolean, ajustes?: string) {
+    const s = stateRef.current!;
+    if (!s.jobId) return;
+
+    setState((prev) => ({ ...prev, loading: true }));
+    api.gerar
+      .confirmar(s.jobId, confirm, ajustes)
+      .then(() => {
+        if (!confirm) {
+          setState((prev) => ({ ...prev, phase: "error", loading: false }));
+          addAgentMessage("error", "Geracao cancelada pelo usuario.");
+          if (eventSourceRef.current) eventSourceRef.current.close();
+        } else {
+          setState((prev) => ({ ...prev, phase: "generating", loading: false }));
+          addUserMessage(
+            ajustes
+              ? `Confirmado com ajustes: ${ajustes}`
+              : "Contrato confirmado. Pode continuar."
+          );
+          updateLastAgentMessage(() => ({ hitlData: undefined })); // hide the card
+        }
+      })
+      .catch((e) => {
+        setState((prev) => ({ ...prev, loading: false }));
+        addAgentMessage("error", `Erro ao confirmar: ${e.message}`);
+      });
+  }
+
   return {
     state,
     selectContrato,
@@ -598,5 +641,6 @@ export function useChatGenerator() {
     handleAdjust,
     startGeneration,
     handleNewGeneration,
+    confirmHitl,
   };
 }

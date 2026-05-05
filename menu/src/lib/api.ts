@@ -117,6 +117,11 @@ export const api = {
     status: (jobId: string) => request(`/api/status/${jobId}`),
     streamUrl: (jobId: string) => `${API_BASE}/api/stream/${jobId}`,
     download: (jobId: string, formato: string) => `${API_BASE}/api/download/${jobId}?formato=${formato}`,
+    confirmar: (jobId: string, confirmar: boolean, ajustes?: string) =>
+      request(`/api/gerar/${jobId}/confirmar`, {
+        method: "POST",
+        body: JSON.stringify({ confirmar, ajustes }),
+      }),
     uploadWithFile: async (file: File, params: {
       dias: number;
       refeicoes: string[];

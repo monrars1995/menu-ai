@@ -22,6 +22,7 @@ export default function GerarPage() {
     handleAdjust,
     startGeneration,
     handleNewGeneration,
+    confirmHitl,
   } = useChatGenerator();
 
   return (
@@ -46,6 +47,7 @@ export default function GerarPage() {
             onStartGeneration={startGeneration}
             onAdjust={handleAdjust}
             onNewGeneration={handleNewGeneration}
+            onConfirmHitl={confirmHitl}
           />
         ))}
       </ChatContainer>
