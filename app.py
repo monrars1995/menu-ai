@@ -116,6 +116,7 @@ from routers.ingredientes import router as ingredientes_router
 from routers.fichas_tecnicas import router as fichas_router
 from routers.cardapios import router as cardapios_router
 from routers.knowledge import router as knowledge_router
+from routers.chat import router as chat_router
 from database.schemas import GerarCardapioRequest
 
 # Admin routers (disponíveis no app principal para consumo pelo Next.js admin)
@@ -130,6 +131,7 @@ app.include_router(ingredientes_router)
 app.include_router(fichas_router)
 app.include_router(cardapios_router)
 app.include_router(knowledge_router)
+app.include_router(chat_router)
 app.include_router(admin_meta_router)
 app.include_router(admin_llm_router)
 app.include_router(admin_knowledge_router)

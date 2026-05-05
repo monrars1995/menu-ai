@@ -479,3 +479,60 @@ class PaginatedResponse(BaseModel):
     pagina: int
     por_pagina: int
     total_paginas: int
+
+# ============================================================
+# CHAT CONVERSACIONAL (HITL)
+# ============================================================
+class MensagemChatBase(BaseModel):
+    role: str = Field(..., pattern=r"^(user|assistant|system|tool)$")
+    content: str
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    tool_call_id: Optional[str] = None
+    metadata_json: Optional[Dict[str, Any]] = None
+
+
+class MensagemChatCreate(MensagemChatBase):
+    sessao_id: str
+
+
+class MensagemChatOut(MensagemChatBase):
+    id: str
+    sessao_id: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SessaoChatBase(BaseModel):
+    titulo: Optional[str] = None
+    status: str = Field(default="ativa", pattern=r"^(ativa|concluida|arquivada)$")
+
+
+class SessaoChatCreate(SessaoChatBase):
+    job_id: Optional[str] = None
+    contexto_json: Optional[Dict[str, Any]] = None
+
+
+class SessaoChatOut(SessaoChatBase):
+    id: str
+    usuario_id: str
+    job_id: Optional[str] = None
+    contexto_json: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SessaoChatDetalhada(SessaoChatOut):
+    mensagens: List[MensagemChatOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class NovaMensagemRequest(BaseModel):
+    content: str
+    metadata_json: Optional[Dict[str, Any]] = None

@@ -151,6 +151,20 @@ export const api = {
       return res.json();
     },
   },
+
+  chat: {
+    criarSessao: (jobId?: string) =>
+      request("/api/chat/sessao", {
+        method: "POST",
+        body: JSON.stringify({ job_id: jobId || null }),
+      }),
+    getSessao: (sessaoId: string) => request(`/api/chat/sessao/${sessaoId}`),
+    refinarAnalise: (sessaoId: string, mensagem: string) =>
+      request(`/api/chat/${sessaoId}/refinar_analise`, {
+        method: "POST",
+        body: JSON.stringify({ content: mensagem }),
+      }),
+  },
 };
 
 export { ApiError, API_BASE };

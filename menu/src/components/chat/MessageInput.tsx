@@ -26,6 +26,7 @@ export interface MessageInputProps {
   onSetRestricoes?: (v: string) => void;
   onSkipRestrictions?: () => void;
   onInlineUpload?: (file: File) => void;
+  onSendMessage?: (text: string) => void;
 }
 
 export function MessageInput(props: MessageInputProps) {
@@ -35,6 +36,7 @@ export function MessageInput(props: MessageInputProps) {
   const [diasDraft, setDiasDraft] = useState(String(props.diasValue ?? 5));
   const [custoDraft, setCustoDraft] = useState(props.custoValue ?? "");
   const [restricoesDraft, setRestricoesDraft] = useState(props.restricoesValue ?? "");
+  const [chatDraft, setChatDraft] = useState("");
 
   const prevPhase = useRef<ChatPhase>(phase);
   useEffect(() => {
@@ -230,18 +232,45 @@ export function MessageInput(props: MessageInputProps) {
     );
   }
 
-  // Generating / result / error — status
-  if (phase === "generating" || phase === "result" || phase === "error") {
+  // Generating / result / error / hitl-confirm — Free chat input
+  if (phase === "generating" || phase === "result" || phase === "error" || phase === "hitl-confirm") {
     return (
       <div className={stickyInputShell}>
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-xs text-ink-muted-48">
-            {phase === "generating"
-              ? "Geracao em andamento..."
-              : phase === "error"
-              ? "Ocorreu um erro. Tente novamente."
-              : "Geracao concluida."}
-          </p>
+        <div className="mx-auto max-w-2xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <textarea
+              value={chatDraft}
+              onChange={(e) => setChatDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (chatDraft.trim()) {
+                    props.onSendMessage?.(chatDraft.trim());
+                    setChatDraft("");
+                  }
+                }
+              }}
+              placeholder={phase === "hitl-confirm" ? "Ajuste os dados antes de confirmar..." : "Envie uma instrução ou refinamento..."}
+              rows={1}
+              className="min-h-[2.5rem] max-h-[8rem] w-full resize-none rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)] sm:flex-1"
+            />
+            <div className="flex shrink-0 justify-end gap-2">
+              <button
+                onClick={() => {
+                  if (chatDraft.trim()) {
+                    props.onSendMessage?.(chatDraft.trim());
+                    setChatDraft("");
+                  }
+                }}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border"
+              >
+                <Send size={14} />
+              </button>
+            </div>
+          </div>
+          {phase === "generating" && (
+            <p className="mt-2 text-center text-xs text-ink-muted-48">Geração em andamento...</p>
+          )}
         </div>
       </div>
     );

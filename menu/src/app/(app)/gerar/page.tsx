@@ -70,6 +70,7 @@ export default function GerarPage() {
         restricoesValue={state.restricoes}
         onSetRestricoes={setRestricoes}
         onSkipRestrictions={handleSkipRestrictions}
+        onSendMessage={sendChatMessage}
       />
     </div>
   );

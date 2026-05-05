@@ -184,6 +184,14 @@ def _run_with_tools(
         }
         if not content:
             asst["content"] = None
+        elif step_callback:
+            try:
+                step_callback(content, agent_name=agent_name)
+            except TypeError:
+                try:
+                    step_callback(content, **{"agent_name": agent_name})
+                except Exception:
+                    pass
         messages = list(messages)
         messages.append(asst)
         for tc in tcalls:

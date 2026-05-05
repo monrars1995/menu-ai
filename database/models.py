@@ -671,6 +671,13 @@ class SessaoChat(Base):
         return f"<SessaoChat {self.id} usuario={self.usuario_id}>"
 
 
+class RoleMensagem:
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+    TOOL = "tool"
+
+
 class MensagemChat(Base):
     """
     Mensagens individuais dentro de uma sessão de chat.

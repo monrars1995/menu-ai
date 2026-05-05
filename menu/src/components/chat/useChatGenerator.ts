@@ -77,6 +77,7 @@ export interface ChatState {
   custoAlvo: string;
   restricoes: string;
   jobId: string | null;
+  sessaoId: string | null;
   cardapioId: string | null;
   loading: boolean;
   loadingContratos: boolean;
@@ -106,6 +107,7 @@ export function useChatGenerator() {
     custoAlvo: "",
     restricoes: "",
     jobId: null,
+    sessaoId: null,
     cardapioId: null,
     loading: false,
     loadingContratos: true,
@@ -432,6 +434,11 @@ export function useChatGenerator() {
         const jobId = res.job_id as string;
         setState((prev) => ({ ...prev, jobId }));
         connectStream(jobId);
+
+        // Criar sessão de chat vinculada ao job
+        api.chat.criarSessao(jobId).then((sessao) => {
+          setState((prev) => ({ ...prev, sessaoId: sessao.id }));
+        }).catch(console.error);
       })
       .catch((e) => {
         setState((s) => ({ ...s, phase: "error", loading: false }));
@@ -590,6 +597,7 @@ export function useChatGenerator() {
       custoAlvo: "",
       restricoes: "",
       jobId: null,
+      sessaoId: null,
       cardapioId: null,
       loading: false,
     }));
@@ -627,6 +635,28 @@ export function useChatGenerator() {
       });
   }
 
+  function sendChatMessage(text: string) {
+    if (!text.trim()) return;
+    const s = stateRef.current!;
+    if (!s.sessaoId) {
+      addAgentMessage("error", "Sessão de chat não encontrada.");
+      return;
+    }
+
+    addUserMessage(text);
+    setState((prev) => ({ ...prev, loading: true }));
+
+    api.chat.refinarAnalise(s.sessaoId, text)
+      .then(() => {
+        setState((prev) => ({ ...prev, loading: false }));
+        addAgentMessage("pipeline", "Refinando análise...", { pensamento: "Processando as novas instruções e ajustando o contexto do contrato..." });
+      })
+      .catch((e) => {
+        setState((prev) => ({ ...prev, loading: false }));
+        addAgentMessage("error", `Erro ao enviar mensagem: ${e.message}`);
+      });
+  }
+
   return {
     state,
     selectContrato,
@@ -642,5 +672,6 @@ export function useChatGenerator() {
     startGeneration,
     handleNewGeneration,
     confirmHitl,
+    sendChatMessage,
   };
 }
