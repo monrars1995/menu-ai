@@ -23,6 +23,7 @@ export default function GerarPage() {
     startGeneration,
     handleNewGeneration,
     confirmHitl,
+    sendChatMessage,
   } = useChatGenerator();
 
   return (
