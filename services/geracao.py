@@ -206,6 +206,72 @@ def executar_crew(
             llm_model_id=llm_model,
         )
 
+        # ============================================================
+        # Human-in-the-Loop: pausa para confirmação após contrato
+        # ============================================================
+        # Fase 1: Análise do contrato (se disponível)
+        resumo_contrato = None
+        if contrato_path:
+            try:
+                progress(20, "📋 Analisando contrato...", "Analista de Contratos")
+                resumo_contrato = crew.analisar_contrato_apenas()
+                progress(35, "📋 Análise do contrato concluída. Aguardando confirmação.", "Sistema")
+            except Exception as e_contrato:
+                progress(20, f"⚠️ Erro na análise do contrato: {e_contrato}", "Sistema")
+                resumo_contrato = {"erro": str(e_contrato)}
+
+        if resumo_contrato and contrato_path:
+            # Muda status para aguardando confirmação
+            job_state.jobs[job_id]["status"] = "aguardando_confirmacao"
+            job_state.jobs[job_id]["resumo_contrato"] = resumo_contrato
+            emit(
+                "aguardando_confirmacao",
+                message="Análise do contrato concluída. Aguardando confirmação do usuário.",
+                resumo=resumo_contrato if isinstance(resumo_contrato, dict) else {"texto": str(resumo_contrato)[:2000]},
+                progress=35,
+            )
+
+            # Atualiza DB
+            if db_ok:
+                try:
+                    from database.connection import SessionLocal
+                    from database.models import JobAgente
+                    db_wait = SessionLocal()
+                    job_db_wait = db_wait.query(JobAgente).filter(JobAgente.job_id == job_id).first()
+                    if job_db_wait:
+                        job_db_wait.status = "executando"
+                        job_db_wait.progresso = 35
+                        job_db_wait.updated_at = datetime.utcnow()
+                        db_wait.commit()
+                    db_wait.close()
+                except Exception:
+                    pass
+
+            # Loop de espera (max 30 min)
+            import asyncio
+            import time
+            _wait_start = time.time()
+            _MAX_WAIT_SECONDS = 30 * 60  # 30 minutos
+
+            while job_state.jobs[job_id].get("status") == "aguardando_confirmacao":
+                import time as _t
+                _t.sleep(2)
+                elapsed = time.time() - _wait_start
+                if elapsed > _MAX_WAIT_SECONDS:
+                    job_state.jobs[job_id]["status"] = "erro"
+                    job_state.jobs[job_id]["error"] = "Timeout: confirmação não recebida em 30 minutos."
+                    progress(0, "⏰ Timeout: confirmação não recebida.", "Sistema")
+                    emit("error", message="Timeout aguardando confirmação do usuário.")
+                    return
+
+            # Aplica ajustes do usuário se fornecidos
+            ajustes_usuario = job_state.jobs[job_id].get("ajustes_usuario", "")
+            if ajustes_usuario:
+                crew.aplicar_ajustes_usuario(ajustes_usuario)
+                progress(38, f"📝 Ajustes do usuário aplicados.", "Sistema")
+
+            progress(40, "🏁 Confirmação recebida! Continuando geração...", "Sistema")
+
         result = str(crew.run())
 
         # Persistir regras extraídas do contrato no DB

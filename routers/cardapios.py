@@ -358,6 +358,8 @@ def _cardapio_para_dataframe(cardapio: Cardapio) -> pd.DataFrame:
         rows = []
         for dia in cardapio.dias:
             for ref in dia.refeicoes:
+                # Custo: preserva valor real; marca None se zero para preenchimento posterior
+                custo = ref.custo_porcao or 0
                 rows.append({
                     "Dia": dia.numero_dia,
                     "Data": dia.data.strftime("%d/%m/%Y") if dia.data else "",
@@ -365,7 +367,7 @@ def _cardapio_para_dataframe(cardapio: Cardapio) -> pd.DataFrame:
                     "Categoria": ref.categoria or "",
                     "Código": ref.codigo_prato or "",
                     "Prato": ref.nome_prato,
-                    "Custo (R$)": round(ref.custo_porcao, 2),
+                    "Custo (R$)": round(custo, 2) if custo > 0 else None,
                 })
         return pd.DataFrame(rows) if rows else pd.DataFrame({"Cardápio": [cardapio.nome]})
 
@@ -439,18 +441,19 @@ def _enriquecer_custos_dataframe(
         return custo_por_codigo.get(key)
 
     custos = df[col_cod].map(_custo_row)
-    # Só sobrescreve onde temos match na ficha; mantém valor existente caso contrário
-    mask = custos.notna()
+    # Só preenche onde: (a) temos match na ficha E (b) o valor atual é nulo/zero
+    existing = df[custo_col]
+    needs_fill = existing.isna() | (existing == 0) | (existing == 0.0)
+    mask = custos.notna() & needs_fill
     df = df.copy()
     df.loc[mask, custo_col] = custos[mask].round(2)
     return df
 
 
 def _cardapio_export_dataframe(cardapio: Cardapio, db: Session) -> pd.DataFrame:
-    """DataFrame para CSV/XLSX: prioriza dias estruturados; senão markdown + custos das fichas."""
+    """DataFrame para CSV/XLSX: sempre tenta enriquecer custos a partir das fichas."""
     df = _cardapio_para_dataframe(cardapio)
-    if _tem_refeicoes_estruturadas(cardapio):
-        return df
+    # Sempre enriquece: preenche custos None/zero com dados reais das fichas técnicas
     return _enriquecer_custos_dataframe(df, cardapio, db)
 
 
@@ -704,6 +707,61 @@ def _gerar_xlsx(cardapio: Cardapio, db: Session) -> io.BytesIO:
             nut_rows.append([cat, s["n"], round(s["custo"] / max(s["n"], 1), 2)])
     _write_sheet(wb.create_sheet(), nut_headers, nut_rows, "Resumo Nutricional")
 
+    # --- Sheet 5: Incidência Proteica ---
+    prot_headers = ["Tipo Proteína", "Ocorrências", "% do Total", "Custo Médio (R$)"]
+    prot_rows = []
+    if cardapio.dias:
+        prot_stats: dict[str, dict] = defaultdict(lambda: {"n": 0, "custo": 0.0})
+        total_prots = 0
+        for dia in cardapio.dias:
+            for ref in dia.refeicoes:
+                cat_upper = (ref.categoria or "").upper()
+                if "PROT" in cat_upper:
+                    subtipo = _detectar_subtipo_proteina(ref.nome_prato)
+                    prot_stats[subtipo]["n"] += 1
+                    prot_stats[subtipo]["custo"] += ref.custo_porcao or 0
+                    total_prots += 1
+        for tipo in sorted(prot_stats):
+            s = prot_stats[tipo]
+            pct = round((s["n"] / max(total_prots, 1)) * 100, 1)
+            prot_rows.append([
+                tipo,
+                s["n"],
+                f"{pct}%",
+                round(s["custo"] / max(s["n"], 1), 2),
+            ])
+    _write_sheet(wb.create_sheet(), prot_headers, prot_rows, "Incidência Proteica")
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf
+
+
+# ============================================================
+# Helpers de classificação proteica
+# ============================================================
+
+_SUBTIPOS_PROTEINA = {
+    "Bovino": ["bovino", "carne", "patinho", "acém", "músculo", "alcatra",
+               "lagarto", "cupim", "maminha", "contra filé", "contrafilé",
+               "coxão", "paleta", "costela bovina"],
+    "Frango": ["frango", "ave", "peito de frango", "coxa", "sobrecoxa",
+               "filé de frango", "frango assado", "frango grelhado"],
+    "Suíno": ["suíno", "porco", "lombo", "pernil", "bisteca",
+              "costela suína", "linguiça"],
+    "Peixe": ["peixe", "tilápia", "merluza", "sardinha", "atum",
+              "bacalhau", "pescada", "salmão", "filé de peixe"],
+    "Ovo": ["ovo", "omelete", "ovos", "ovo cozido", "ovo mexido"],
+    "Vegetal": ["soja", "grão-de-bico", "grão de bico", "lentilha",
+                "feijão", "tofu", "PTS", "proteína de soja",
+                "proteina texturizada"],
+}
+
+
+def _detectar_subtipo_proteina(nome_prato: str) -> str:
+    """Classifica o prato proteico por subtipo baseado no nome."""
+    nome_lower = (nome_prato or "").lower()
+    for subtipo, keywords in _SUBTIPOS_PROTEINA.items():
+        if any(kw.lower() in nome_lower for kw in keywords):
+            return subtipo
+    return "Outro"

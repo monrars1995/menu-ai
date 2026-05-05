@@ -18,7 +18,7 @@ export default function Home() {
     <div className="flex min-h-screen items-center justify-center bg-canvas">
       <div className="flex items-center gap-3">
         <img src="/isotipo.svg" alt="Menu.AI" className="h-10 w-10 animate-pulse" />
-        <span className="text-xl font-display font-semibold text-ink">Menu.AI</span>
+        <span className="text-xl font-medium tracking-tight text-ink">Menu.AI</span>
       </div>
     </div>
   );

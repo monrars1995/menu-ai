@@ -111,11 +111,21 @@ def atualizar(
     if usuario.role != "super_admin" and ing.empresa_id != usuario.empresa_id:
         raise HTTPException(status_code=403, detail="Acesso negado.")
 
+    campos_alterados = set(body.model_dump(exclude_unset=True).keys())
     for campo, valor in body.model_dump(exclude_unset=True).items():
         setattr(ing, campo, valor)
 
     db.commit()
     db.refresh(ing)
+
+    # Recálculo em cascata: se custo ou FC mudou, recalcula todas as fichas que usam este ingrediente
+    campos_custo = {"custo_unitario", "fator_correcao"}
+    if campos_custo & campos_alterados:
+        from services.cascata import recalcular_fichas_por_ingrediente
+        fichas_ids = recalcular_fichas_por_ingrediente(db, ingrediente_id)
+        if fichas_ids:
+            db.commit()
+
     return IngredienteOut.model_validate(ing)
 
 

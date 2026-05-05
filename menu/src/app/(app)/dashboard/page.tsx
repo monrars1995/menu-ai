@@ -7,7 +7,6 @@ import { formatCurrency, statusBadge } from "@/lib/utils";
 import Link from "next/link";
 import {
   ChefHat,
-  FileText,
   BookOpen,
   UtensilsCrossed,
   Salad,
@@ -31,7 +30,7 @@ export default function DashboardPage() {
     <div className="max-w-5xl">
       {/* Hero — whitespace band */}
       <div className="pb-8 pt-2">
-        <h1 className="text-[32px] font-display font-semibold text-ink">
+        <h1 className="text-[32px] font-medium tracking-tight text-ink">
           Olá, {firstName}
         </h1>
         <p className="mt-2 text-sm text-ink-muted-48">
@@ -39,15 +38,18 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {/* Stat cards — signature coral for primary action */}
+      {/* Stat cards — banda signature (coral doc) para CTA principal */}
       <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Link href="/gerar" className="group flex items-center gap-4 rounded-xl bg-gradient-to-br from-primary to-primary-active p-5 text-white shadow-md shadow-primary/20 transition-all hover:shadow-lg hover:shadow-primary/30">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20">
+        <Link
+          href="/gerar"
+          className="group flex items-center gap-4 rounded-xl border border-white/10 bg-signature-coral p-5 text-white transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/15">
             <ChefHat size={20} />
           </div>
           <div>
-            <p className="text-sm font-semibold">Gerar Cardápio</p>
-            <p className="text-xs text-white/70">Crie com IA</p>
+            <p className="text-sm font-medium">Gerar Cardápio</p>
+            <p className="text-xs text-white/80">Crie com IA</p>
           </div>
         </Link>
 
@@ -56,7 +58,7 @@ export default function DashboardPage() {
             <BookOpen size={20} />
           </div>
           <div>
-            <p className="text-2xl font-display font-semibold text-ink">{stats.fichas ?? "—"}</p>
+            <p className="text-2xl font-medium text-ink">{stats.fichas ?? "—"}</p>
             <p className="text-xs text-ink-muted-48">Fichas Técnicas</p>
           </div>
         </div>
@@ -66,7 +68,7 @@ export default function DashboardPage() {
             <Salad size={20} />
           </div>
           <div>
-            <p className="text-2xl font-display font-semibold text-ink">{stats.ingredientes ?? "—"}</p>
+            <p className="text-2xl font-medium text-ink">{stats.ingredientes ?? "—"}</p>
             <p className="text-xs text-ink-muted-48">Ingredientes</p>
           </div>
         </div>
@@ -76,7 +78,7 @@ export default function DashboardPage() {
             <TrendingUp size={20} />
           </div>
           <div>
-            <p className="text-2xl font-display font-semibold text-ink">{recentCardapios.length}</p>
+            <p className="text-2xl font-medium text-ink">{recentCardapios.length}</p>
             <p className="text-xs text-ink-muted-48">Cardápios Recentes</p>
           </div>
         </div>
@@ -96,7 +98,7 @@ export default function DashboardPage() {
               <UtensilsCrossed size={24} />
             </div>
             <p className="text-sm text-ink-muted-48">Nenhum cardápio ainda</p>
-            <Link href="/gerar" className="mt-4 text-sm font-medium text-primary hover:underline">
+            <Link href="/gerar" className="mt-4 text-sm font-medium text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2">
               Criar primeiro cardápio →
             </Link>
           </div>
@@ -119,7 +121,7 @@ export default function DashboardPage() {
                     badge.variant === "success" ? "bg-success/10 text-success border border-success-border/30" :
                     badge.variant === "warning" ? "bg-amber-50 text-amber-800 border border-amber-200" :
                     badge.variant === "destructive" ? "bg-red-50 text-red-700 border border-red-200" :
-                    badge.variant === "default" ? "bg-primary/8 text-primary border border-primary/20" :
+                    badge.variant === "default" ? "bg-primary-subtle text-ink border border-hairline" :
                     "bg-surface-soft text-ink-muted-48 border border-hairline"
                   }`}>
                     {badge.label}

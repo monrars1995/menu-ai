@@ -90,14 +90,14 @@ export default function ListPage<T extends object>({
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="mb-4 rounded-lg border border-danger/25 bg-red-50 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       )}
 
       {loading ? (
         <div className="flex h-40 items-center justify-center">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-hairline)] border-t-[var(--color-primary)]" />
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-hairline)] border-t-[var(--color-ink)]" />
         </div>
       ) : (
         <DataTable columns={columns} rows={rows} emptyText={emptyText} />

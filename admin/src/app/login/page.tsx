@@ -45,31 +45,43 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#FCFCFD] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--surface-canvas)] px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF5A36] to-[#FF2A00] text-white">
-            <svg viewBox="0 0 100 100" className="w-full h-full p-1.5" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#FF5A36" />
-                  <stop offset="100%" stopColor="#FF2A00" />
-                </linearGradient>
-              </defs>
-              <circle cx="50" cy="18" r="7" fill="url(#logoGrad)" />
-              <path d="M 24 80 V 42 C 24 34 32 30 38 36 L 50 48 L 62 36 C 68 30 76 34 76 42 V 80" fill="none" stroke="currentColor" strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round" />
+          <div
+            className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg text-white"
+            style={{ background: "var(--color-brand)" }}
+          >
+            <svg viewBox="0 0 100 100" className="h-full w-full p-1.5" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="18" r="7" fill="currentColor" className="opacity-90" />
+              <path
+                d="M 24 80 V 42 C 24 34 32 30 38 36 L 50 48 L 62 36 C 68 30 76 34 76 42 V 80"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="6.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
               <path d="M 50 48 V 85" fill="none" stroke="currentColor" strokeWidth="6.5" strokeLinecap="round" />
             </svg>
           </div>
-          <h1 className="text-xl font-semibold tracking-tight text-[#0A192F]">Menu.AI Admin</h1>
-          <p className="mt-1 text-sm text-[#8892B0]">Acesso restrito a administradores</p>
+          <h1 className="text-page-title">Menu.AI Admin</h1>
+          <p className="text-subtitle">Acesso restrito a administradores</p>
         </div>
 
-        <div className="card p-6">
-          <div className="mb-4 flex rounded-lg bg-[#FCFCFD] p-1">
+        <div className="surface p-6">
+          <div className="mb-4 flex rounded-md bg-[var(--surface-subtle)] p-1">
             <button
-              onClick={() => { setTab("jwt"); setMsg(""); }}
-              className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${tab === "jwt" ? "bg-white text-[#0A192F] shadow-sm" : "text-[#8892B0]"}`}
+              type="button"
+              onClick={() => {
+                setTab("jwt");
+                setMsg("");
+              }}
+              className={`flex-1 rounded-sm py-2 text-xs font-medium transition-colors ${
+                tab === "jwt"
+                  ? "bg-white text-[var(--color-ink)] shadow-sm"
+                  : "text-[var(--text-secondary)]"
+              }`}
             >
               <span className="flex items-center justify-center gap-1.5">
                 <LogIn size={14} />
@@ -77,8 +89,16 @@ export default function LoginPage() {
               </span>
             </button>
             <button
-              onClick={() => { setTab("apikey"); setMsg(""); }}
-              className={`flex-1 rounded-md py-1.5 text-xs font-medium transition-colors ${tab === "apikey" ? "bg-white text-[#0A192F] shadow-sm" : "text-[#8892B0]"}`}
+              type="button"
+              onClick={() => {
+                setTab("apikey");
+                setMsg("");
+              }}
+              className={`flex-1 rounded-sm py-2 text-xs font-medium transition-colors ${
+                tab === "apikey"
+                  ? "bg-white text-[var(--color-ink)] shadow-sm"
+                  : "text-[var(--text-secondary)]"
+              }`}
             >
               <span className="flex items-center justify-center gap-1.5">
                 <KeyRound size={14} />
@@ -126,9 +146,7 @@ export default function LoginPage() {
           )}
 
           {msg && (
-            <p className={`mt-3 text-xs ${isError ? "text-red-600" : "text-[#8892B0]"}`}>
-              {msg}
-            </p>
+            <p className={`mt-3 text-xs ${isError ? "text-red-600" : "text-[var(--text-secondary)]"}`}>{msg}</p>
           )}
         </div>
       </div>

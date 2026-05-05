@@ -28,7 +28,7 @@ export default function DataTable<T extends object>({
         <tbody>
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="py-8 text-center text-sm" style={{ color: "var(--text-tertiary)" }}>
+              <td colSpan={columns.length} className="py-8 text-center text-sm text-ink-muted-48">
                 {emptyText}
               </td>
             </tr>
@@ -42,7 +42,7 @@ export default function DataTable<T extends object>({
                   else if (v === null || v === undefined) v = "—";
                   else if (typeof v === "boolean") v = v ? "Sim" : "Não";
                   return (
-                    <td key={String(c.key)} className="text-[var(--text-primary)]">
+                    <td key={String(c.key)} className="text-ink">
                       {String(v)}
                     </td>
                   );

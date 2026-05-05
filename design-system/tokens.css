@@ -1,0 +1,80 @@
+/**
+ * Menu.AI — tokens alinhados a DESIGN-airtable.md (fonte única).
+ * Primário de ação = near-black (#181d26); link = azul; coral de assinatura doc = #aa2d00.
+ * --color-brand = laranja identidade Menu.AI (logo / destaques, não CTA principal).
+ */
+:root {
+  /* Brand & ink */
+  --color-ink: #181d26;
+  --color-primary: #181d26;
+  --color-primary-active: #0d1218;
+  --color-body: #333840;
+  --color-muted: #41454d;
+  --color-on-primary: #ffffff;
+  --color-on-dark: #ffffff;
+
+  /* Menu.AI marca (não usar como fundo de botão primário) */
+  --color-brand: #ff5a36;
+  --color-brand-active: #e84f2e;
+
+  /* Surfaces */
+  --color-canvas: #ffffff;
+  --color-surface-soft: #f8fafc;
+  --color-surface-strong: #e0e2e6;
+  --color-surface-dark: #181d26;
+  --color-surface-dark-elevated: #1d1f25;
+  --color-pricing-ink: #1d1f25;
+
+  /* Borders */
+  --color-hairline: #dddddd;
+  --color-border-strong: #9297a0;
+
+  /* Signature (doc) */
+  --color-signature-coral: #aa2d00;
+  --color-signature-forest: #0a2e0e;
+  --color-signature-cream: #f5e9d4;
+  --color-signature-peach: #fcab79;
+  --color-signature-mint: #a8d8c4;
+  --color-signature-yellow: #f4d35e;
+  --color-signature-mustard: #d9a441;
+
+  /* Semantic */
+  --color-link: #1b61c9;
+  --color-link-active: #1a3866;
+  --color-info: #254fad;
+  --color-info-border: #458fff;
+  --color-success: #006400;
+  --color-success-border: #39bf45;
+  --color-danger: #dc2626;
+
+  /* Spacing (4px grid) */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 96px;
+
+  /* Radius */
+  --radius-xs: 2px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-pill: 9999px;
+  --radius-full: 9999px;
+
+  /* Admin legacy aliases → tokens */
+  --text-primary: var(--color-ink);
+  --text-secondary: var(--color-body);
+  --text-tertiary: var(--color-muted);
+  --text-quaternary: #9297a0;
+  --surface-canvas: var(--color-canvas);
+  --surface-base: var(--color-canvas);
+  --surface-subtle: var(--color-surface-soft);
+  --color-hairline-strong: var(--color-border-strong);
+  --color-primary-subtle: rgba(24, 29, 38, 0.08);
+  --color-primary-ring: rgba(69, 143, 255, 0.35);
+  --color-primary-hover: var(--color-primary-active);
+}

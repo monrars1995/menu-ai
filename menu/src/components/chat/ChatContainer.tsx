@@ -62,12 +62,12 @@ export function ChatContainer({ children, className, onFileDrop }: ChatContainer
       )}
     >
       {dragOver && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 backdrop-blur-sm">
+        <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-info-border/50 bg-surface-soft/90 backdrop-blur-sm">
           <div className="text-center">
-            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-              <Upload size={24} className="text-primary" />
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-info/10">
+              <Upload size={24} className="text-info" />
             </div>
-            <p className="text-sm font-medium text-primary">Solte o PDF do contrato aqui</p>
+            <p className="text-sm font-medium text-ink">Solte o PDF do contrato aqui</p>
           </div>
         </div>
       )}

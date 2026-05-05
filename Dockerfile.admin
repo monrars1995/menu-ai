@@ -1,9 +1,12 @@
-# Build stage
+# Build stage — layout mirrors repo (admin/../design-system for Tailwind preset)
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-COPY admin/package.json admin/package-lock.json* ./
+COPY design-system ./design-system
+
+COPY admin/package.json admin/package-lock.json* ./admin/
+WORKDIR /build/admin
 RUN npm ci --ignore-scripts
 
 COPY admin/ ./
@@ -23,10 +26,9 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8001
 
-# Copy only standalone output (no node_modules needed)
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+COPY --from=builder /build/admin/.next/standalone ./
+COPY --from=builder /build/admin/.next/static ./.next/static
+COPY --from=builder /build/admin/public ./public
 
 EXPOSE 8001
 

@@ -72,7 +72,7 @@ export function MessageBubble(props: MessageBubbleProps) {
     return (
       <div className="flex items-start justify-end gap-2 sm:gap-3">
         <UserAvatar />
-        <div className="max-w-[min(100%,80%)] rounded-2xl rounded-br-md bg-gradient-to-br from-primary to-primary-active px-4 py-2.5 text-sm leading-relaxed text-white shadow-sm shadow-primary/10 sm:max-w-[80%]">
+        <div className="max-w-[min(100%,80%)] rounded-2xl rounded-br-md bg-surface-dark px-4 py-2.5 text-sm leading-relaxed text-white sm:max-w-[80%]">
           {content}
         </div>
       </div>
@@ -94,7 +94,7 @@ export function MessageBubble(props: MessageBubbleProps) {
         {type === "analysis" && <AnalysisCard analysis={props.analysis ?? null} />}
         {type === "uploading" && (
           <div className="flex items-center gap-2 rounded-xl bg-surface-soft p-4">
-            <Loader2 size={14} className="animate-spin text-primary" />
+            <Loader2 size={14} className="animate-spin text-ink" />
             <span className="text-sm text-ink-muted-48">{content}</span>
           </div>
         )}
@@ -255,7 +255,7 @@ function PipelineView({
         <div>
           <div className="h-1.5 rounded-full bg-ink/8">
             <div
-              className="h-1.5 rounded-full bg-gradient-to-r from-primary to-primary-active transition-all duration-500"
+              className="h-1.5 rounded-full bg-ink transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -280,7 +280,7 @@ function PipelineView({
                     isDone
                       ? "border-success bg-success text-white"
                       : isCurrent
-                      ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/20"
+                      ? "border-ink bg-ink/10 text-ink ring-2 ring-ink/15"
                       : "border-ink/10 bg-surface-soft text-ink-muted-48"
                   )}
                 >
@@ -316,7 +316,7 @@ function PipelineView({
             onClick={() => setShowThinking(!showThinking)}
             className="flex items-center gap-1.5 text-xs text-ink-muted-48 hover:text-ink"
           >
-            <ChefHat size={12} className="text-primary" />
+            <ChefHat size={12} className="text-ink" />
             Pensamento
             {showThinking ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
           </button>
@@ -356,9 +356,9 @@ function ConfirmCard({
   };
 
   return (
-    <div className="rounded-xl bg-gradient-to-br from-surface-dark to-surface-dark/90 p-5 text-white space-y-4 shadow-lg shadow-black/20">
+    <div className="rounded-xl bg-surface-dark p-5 text-white space-y-4 shadow-sm">
       <div className="flex items-center gap-2">
-        <ChefHat size={16} className="text-primary" />
+        <ChefHat size={16} className="text-ink" />
         <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Resumo da Geracao</p>
       </div>
 
@@ -395,7 +395,7 @@ function ConfirmCard({
       <div className="flex gap-2 pt-1">
         <button
           onClick={onStartGeneration}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-primary to-primary-active px-4 py-3 text-sm font-semibold text-white shadow-sm shadow-primary/30 hover:shadow-md hover:shadow-primary/40 transition-all"
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
         >
           <Sparkles size={16} />
           Gerar Cardapio
@@ -448,7 +448,7 @@ function ResultCard({
       <div className="flex flex-wrap gap-2">
         <a
           href={api.gerar.download(data.jobId, "xlsx")}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-primary/20 hover:bg-primary-active hover:shadow-md transition-all"
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
         >
           <Download size={12} /> XLSX
         </a>
@@ -473,7 +473,7 @@ function ResultCard({
         {data.cardapioId && (
           <a
             href={`/cardapios/${data.cardapioId}`}
-            className="flex items-center gap-1.5 rounded-lg border border-primary/30 px-4 py-2 text-xs font-medium text-primary hover:bg-primary/5 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg border border-hairline px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-surface-soft"
           >
             Ver Cardapio
           </a>

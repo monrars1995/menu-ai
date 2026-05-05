@@ -110,6 +110,40 @@ class MenuOrchestrator:
             print(f"⚠️  Tools do banco indisponíveis: {e}")
             return {}
 
+    def analisar_contrato_apenas(self) -> dict:
+        """
+        Executa APENAS a etapa 1 (análise do contrato) e retorna as regras extraídas.
+        Usado no fluxo human-in-the-loop para permitir revisão antes de continuar.
+        """
+        from pipeline.litellm_runner import run_lite_pipeline_step
+
+        self._configurar_tools()
+        tools_all = {**self._get_tools_base(), **self._get_tools_db()}
+
+        try:
+            resultado = run_lite_pipeline_step(
+                orchestrator=self,
+                step_index=0,  # Etapa 1: Analista de Contratos
+                tools=tools_all,
+            )
+            # Retorna as regras extraídas do contexto
+            return self.ctx.regras_contrato or {"texto": str(resultado)[:2000]}
+        except Exception as e:
+            return {"erro": str(e)}
+
+    def aplicar_ajustes_usuario(self, ajustes: str) -> None:
+        """
+        Aplica ajustes textuais do usuário ao contexto compartilhado.
+        Chamado após confirmação human-in-the-loop.
+        """
+        if ajustes:
+            # Adiciona restrições do usuário ao contexto
+            if self.ctx.restricoes_usuario:
+                self.ctx.restricoes_usuario += f"\n\n=== AJUSTES DO CLIENTE (pós-análise) ===\n{ajustes}"
+            else:
+                self.ctx.restricoes_usuario = f"=== AJUSTES DO CLIENTE ===\n{ajustes}"
+            self.restricoes_usuario = self.ctx.restricoes_usuario
+
     def run(self) -> str:
         """Executa o pipeline sequencial e retorna o cardápio final consolidado."""
         from pipeline.litellm_runner import run_lite_pipeline

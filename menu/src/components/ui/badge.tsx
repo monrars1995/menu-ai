@@ -12,7 +12,7 @@ const variantMap: Record<string, string> = {
   success: "bg-success/10 text-success border border-success-border/30",
   warning: "bg-amber-50 text-amber-800 border border-amber-200",
   destructive: "bg-red-50 text-red-700 border border-red-200",
-  default: "bg-primary/8 text-primary border border-primary/20",
+  default: "bg-primary-subtle text-ink border border-hairline",
   secondary: "bg-surface-soft text-ink-muted-80 border border-hairline",
   muted: "bg-surface-soft text-ink-muted-48 border border-hairline",
 };

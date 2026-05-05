@@ -586,3 +586,52 @@ class KnowledgeChunk(Base):
         UniqueConstraint("document_id", "chunk_index", name="uq_knowledge_doc_chunk"),
         Index("ix_knowledge_chunks_empresa_source", "empresa_id", "source_type", "source_id"),
     )
+
+
+# ============================================================
+# 14. AUDITORIA DE CHAMADAS LLM
+# ============================================================
+class LLMAuditLog(Base):
+    """Rastreia cada tentativa de chamada a um modelo LLM (sucesso ou falha)."""
+
+    __tablename__ = "llm_audit_logs"
+
+    id              = Column(String(36), primary_key=True, default=_uuid)
+    job_id          = Column(String(50), nullable=True, index=True)
+    empresa_id      = Column(String(36), nullable=True, index=True)
+
+    # Modelo e provedor
+    model_requested = Column(String(200), nullable=False)       # modelo pedido pelo usuário/config
+    model_used      = Column(String(200), nullable=False)       # modelo efetivamente usado (pode ser fallback)
+    provider        = Column(String(100), nullable=True)        # openrouter, anthropic, openai, etc.
+    is_fallback     = Column(Boolean, default=False)            # True se usou modelo de fallback
+
+    # Etapa do pipeline
+    step_label      = Column(String(200), nullable=True)        # "Analista de Contratos", etc.
+    step_index      = Column(Integer, nullable=True)
+
+    # Métricas
+    latency_ms      = Column(Integer, nullable=True)            # latência total em ms
+    tokens_prompt   = Column(Integer, nullable=True)
+    tokens_completion = Column(Integer, nullable=True)
+    tokens_total    = Column(Integer, nullable=True)
+    cost_usd        = Column(Float, nullable=True)              # custo estimado em USD
+
+    # Resultado
+    success         = Column(Boolean, default=True, nullable=False)
+    error_type      = Column(String(100), nullable=True)        # timeout, rate_limit, auth, etc.
+    error_message   = Column(Text, nullable=True)
+    http_status     = Column(Integer, nullable=True)
+
+    # Timestamps
+    created_at      = Column(DateTime, default=_now, nullable=False)
+
+    __table_args__ = (
+        Index("ix_llm_audit_job_step", "job_id", "step_index"),
+        Index("ix_llm_audit_created", "created_at"),
+        Index("ix_llm_audit_model", "model_used"),
+    )
+
+    def __repr__(self):
+        return f"<LLMAuditLog {self.model_used} success={self.success}>"
+

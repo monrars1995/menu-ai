@@ -21,8 +21,8 @@ const nav = [
   { href: "/empresas", label: "Empresas", icon: Building2 },
   { href: "/contratos", label: "Contratos", icon: FileText },
   { href: "/ingredientes", label: "Ingredientes", icon: Apple },
-  { href: "/fichas", label: "Fichas T\xc3\xa9cnicas", icon: BookOpen },
-  { href: "/cardapios", label: "Card\xc3\xa1pios", icon: ClipboardList },
+  { href: "/fichas", label: "Fichas Técnicas", icon: BookOpen },
+  { href: "/cardapios", label: "Cardápios", icon: ClipboardList },
   { href: "/llm", label: "LLM", icon: Cpu },
   { href: "/knowledge", label: "Knowledge", icon: BrainCircuit },
 ];
@@ -34,26 +34,32 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (auth.loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--surface-canvas)]">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-hairline)] border-t-[var(--color-primary)]" />
+        <div
+          className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-hairline)] border-t-[var(--color-ink)]"
+          aria-hidden
+        />
       </div>
     );
   }
 
   return (
     <div className="flex h-screen bg-[var(--surface-canvas)]">
-      {/* Sidebar */}
-      <aside className="flex w-60 shrink-0 flex-col border-r bg-white" style={{ borderColor: "var(--color-hairline)" }}>
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg" style={{ background: "var(--color-primary)" }}>
+      <aside
+        className="flex w-60 shrink-0 flex-col border-r border-[var(--color-hairline)] bg-white"
+        aria-label="Navegação principal"
+      >
+        <div className="flex h-16 items-center gap-2.5 border-b border-[var(--color-hairline)] px-5">
+          <div
+            className="flex h-8 w-8 items-center justify-center rounded-lg"
+            style={{ background: "var(--color-brand)" }}
+          >
             <Sparkles size={16} className="text-white" />
           </div>
-          <span className="text-base font-semibold tracking-tight text-[var(--text-primary)]">Menu.AI</span>
-          <span className="text-xs font-medium" style={{ color: "var(--color-primary)" }}>Admin</span>
+          <span className="text-base font-medium tracking-tight text-[var(--text-primary)]">Menu.AI</span>
+          <span className="text-xs font-medium text-[var(--color-muted)]">Admin</span>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 space-y-px px-3 py-2">
+        <nav className="flex-1 space-y-0.5 px-3 py-3">
           {nav.map((item) => {
             const active = pathname === item.href;
             const Icon = item.icon;
@@ -61,12 +67,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
+                className={`flex items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors ${
                   active
-                    ? "font-medium"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-primary)]"
+                    ? "border-[var(--color-ink)] bg-[var(--surface-subtle)] font-medium text-[var(--color-ink)]"
+                    : "border-transparent text-[var(--text-secondary)] hover:bg-[var(--surface-subtle)] hover:text-[var(--color-ink)]"
                 }`}
-                style={active ? { background: "var(--color-primary-subtle)", color: "var(--color-primary)" } : {}}
               >
                 <Icon size={16} strokeWidth={active ? 2 : 1.5} />
                 {item.label}
@@ -75,26 +80,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        {/* User */}
-        <div className="border-t px-5 py-4" style={{ borderColor: "var(--color-hairline)" }}>
+        <div className="border-t border-[var(--color-hairline)] px-5 py-4">
           {auth.user && (
-            <div className="mb-3 text-xs" style={{ color: "var(--text-tertiary)" }}>
-              <div className="font-medium" style={{ color: "var(--text-secondary)" }}>
+            <div className="mb-3 text-xs text-[var(--text-tertiary)]">
+              <div className="font-medium text-[var(--text-secondary)]">
                 {auth.user.nome || auth.user.email}
               </div>
               <div>{auth.user.role}</div>
             </div>
           )}
-          <button onClick={auth.logout} className="btn-secondary w-full text-xs">
-            <LogOut size={14} className="mr-1.5" />
+          <button type="button" onClick={auth.logout} className="btn-secondary w-full text-xs">
+            <LogOut size={14} className="mr-1.5 inline" />
             Sair
           </button>
         </div>
       </aside>
 
-      {/* Main */}
       <main className="flex min-w-0 flex-1 overflow-auto">
-        <div className="mx-auto w-full max-w-6xl p-8">{children}</div>
+        <div className="mx-auto w-full max-w-[1280px] px-6 py-8 sm:px-12">{children}</div>
       </main>
     </div>
   );

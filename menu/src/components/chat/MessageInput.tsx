@@ -100,7 +100,7 @@ export function MessageInput(props: MessageInputProps) {
                     props.onSetDias?.(Math.min(30, Math.max(1, v)));
                   }
                 }}
-                className="w-24 rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border"
+                className="w-24 rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]"
               />
               <span className="text-xs text-ink-muted-48">1–30 dias</span>
             </div>
@@ -109,7 +109,7 @@ export function MessageInput(props: MessageInputProps) {
                 const v = parseInt(diasDraft) || 5;
                 props.onSetDias?.(Math.min(30, Math.max(1, v)));
               }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active sm:ml-auto sm:w-auto"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border sm:ml-auto sm:w-auto"
             >
               <Send size={14} />
               Confirmar
@@ -160,7 +160,7 @@ export function MessageInput(props: MessageInputProps) {
                   }
                 }}
                 placeholder="Opcional"
-                className="min-w-0 flex-1 rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border sm:w-32 sm:flex-none"
+                className="min-w-0 flex-1 rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)] sm:w-32 sm:flex-none"
               />
             </div>
             <div className="flex w-full gap-2 sm:ml-auto sm:w-auto">
@@ -169,7 +169,7 @@ export function MessageInput(props: MessageInputProps) {
                   if (custoDraft.trim()) props.onSetCustoAlvo?.(custoDraft.trim());
                   else props.onSkipCost?.();
                 }}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active sm:flex-initial"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border sm:flex-initial"
               >
                 <Send size={14} />
                 Confirmar
@@ -205,7 +205,7 @@ export function MessageInput(props: MessageInputProps) {
               }}
               placeholder="Ex: sem gluten, sem lactose, vegano..."
               rows={2}
-              className="min-h-[4.5rem] w-full resize-none rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border sm:min-h-0 sm:flex-1"
+              className="min-h-[4.5rem] w-full resize-none rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)] sm:min-h-0 sm:flex-1"
             />
             <div className="flex shrink-0 justify-end gap-2 sm:flex-col sm:justify-start">
               <button
@@ -213,7 +213,7 @@ export function MessageInput(props: MessageInputProps) {
                   if (restricoesDraft.trim()) props.onSetRestricoes?.(restricoesDraft.trim());
                   else props.onSkipRestrictions?.();
                 }}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active"
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border"
               >
                 <Send size={14} />
               </button>
@@ -281,7 +281,7 @@ function ContractDropdown({
         className={cn(
           "flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-all",
           dropdownOpen
-            ? "border-primary bg-primary/5 text-primary ring-2 ring-primary/15"
+            ? "border-ink bg-ink/5 text-ink ring-2 ring-ink/15"
             : "border-hairline bg-white text-ink hover:bg-surface-soft hover:shadow-sm"
         )}
       >
@@ -292,7 +292,7 @@ function ContractDropdown({
         <div className="absolute bottom-full left-0 mb-2 max-h-52 w-72 overflow-y-auto rounded-xl border border-hairline bg-white shadow-xl shadow-black/10">
           {loadingContratos ? (
             <div className="flex items-center gap-2 p-4">
-              <Loader2 size={14} className="animate-spin text-primary" />
+              <Loader2 size={14} className="animate-spin text-ink" />
               <p className="text-xs text-ink-muted-48">Carregando contratos...</p>
             </div>
           ) : contratos && contratos.length === 0 ? (

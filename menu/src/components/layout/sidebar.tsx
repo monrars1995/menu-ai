@@ -42,7 +42,7 @@ export function Sidebar({ id }: { id?: string }) {
       {/* Logo */}
       <div className="flex h-16 items-center gap-2.5 border-b border-hairline px-4">
         <img src="/isotipo.svg" alt="Menu.AI" className="h-8 w-8" />
-        <span className="font-display text-base font-medium text-ink">Menu.AI</span>
+        <span className="text-base font-medium text-ink">Menu.AI</span>
       </div>
 
       {/* Nav */}
@@ -57,8 +57,8 @@ export function Sidebar({ id }: { id?: string }) {
               className={cn(
                 "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-primary/8 text-primary"
-                  : "text-ink-muted-48 hover:bg-surface-soft hover:text-ink"
+                  ? "border-l-2 border-ink bg-primary-subtle text-ink"
+                  : "border-l-2 border-transparent text-ink-muted-48 hover:bg-surface-soft hover:text-ink"
               )}
             >
               <Icon size={16} strokeWidth={active ? 2 : 1.5} />

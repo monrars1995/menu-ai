@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useApi } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { Building2, FileText, Apple, BookOpen, ClipboardList, Activity, Cpu, BrainCircuit } from "lucide-react";
 
 interface DashboardData {
@@ -39,7 +38,6 @@ interface StatCard {
 
 export default function DashboardPage() {
   const { apiFetch } = useApi();
-  const auth = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState("");
 
@@ -82,6 +80,13 @@ export default function DashboardPage() {
           {error}
         </div>
       )}
+
+      <div className="mb-8 rounded-lg border border-white/10 bg-signature-coral px-5 py-4 text-white">
+        <p className="text-sm font-medium">Painel administrativo</p>
+        <p className="mt-1 max-w-2xl text-xs text-white/85">
+          Visão consolidada de empresas, contratos, fichas e jobs — alinhado ao sistema de design Menu.AI.
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((c) => (

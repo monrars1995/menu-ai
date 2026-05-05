@@ -33,7 +33,7 @@ function AppChrome({ children }: { children: React.ReactNode }) {
         </button>
         <div className="flex min-w-0 items-center gap-2">
           <img src="/isotipo.svg" alt="" className="h-7 w-7 shrink-0" aria-hidden />
-          <span className="truncate font-display text-sm font-medium text-ink">Menu.AI</span>
+          <span className="truncate text-sm font-medium text-ink">Menu.AI</span>
         </div>
       </header>
 

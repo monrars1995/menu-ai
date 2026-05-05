@@ -1,9 +1,12 @@
-# Build stage
+# Build stage — layout mirrors repo (menu/../design-system for Tailwind preset)
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-COPY menu/package.json menu/package-lock.json* ./
+COPY design-system ./design-system
+
+COPY menu/package.json menu/package-lock.json* ./menu/
+WORKDIR /build/menu
 RUN npm ci --ignore-scripts
 
 COPY menu/ ./
@@ -23,9 +26,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8002
 ENV HOSTNAME=0.0.0.0
 
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+COPY --from=builder /build/menu/.next/standalone ./
+COPY --from=builder /build/menu/.next/static ./.next/static
+COPY --from=builder /build/menu/public ./public
 
 EXPOSE 8002
 

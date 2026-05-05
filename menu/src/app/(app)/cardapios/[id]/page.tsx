@@ -58,7 +58,7 @@ export default function CardapioDetailPage() {
         </button>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-[28px] font-display text-ink">{cardapio.nome}</h1>
+            <h1 className="text-[28px] font-medium tracking-tight text-ink">{cardapio.nome}</h1>
             <p className="mt-1.5 text-sm text-ink-muted-48">
               {cardapio.periodo_inicio ? formatDate(cardapio.periodo_inicio) : "—"} — {cardapio.periodo_fim ? formatDate(cardapio.periodo_fim) : "—"}
               {cardapio.num_dias ? ` · ${cardapio.num_dias} dias` : ""}
@@ -86,7 +86,7 @@ export default function CardapioDetailPage() {
           </Button>
         )}
         <div className="ml-auto flex flex-wrap gap-2 print:hidden">
-          <button onClick={() => api.cardapios.download(id, "xlsx")} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-active">
+          <button onClick={() => api.cardapios.download(id, "xlsx")} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2">
             <Download size={14} /> XLSX
           </button>
           <button onClick={() => api.cardapios.download(id, "csv")} className="inline-flex items-center gap-1.5 rounded-lg border border-hairline bg-white px-3 py-1.5 text-sm font-medium text-ink hover:bg-surface-soft">
@@ -111,7 +111,7 @@ export default function CardapioDetailPage() {
             <div key={dia.id || di} className="rounded-lg border border-hairline bg-white">
               <div className="flex items-center justify-between border-b border-hairline px-5 py-3">
                 <div>
-                  <span className="font-display text-[18px] text-ink">Dia {dia.numero_dia || di + 1}</span>
+                  <span className="text-[18px] font-medium text-ink">Dia {dia.numero_dia || di + 1}</span>
                   {dia.dia_semana && <span className="ml-2 text-xs text-ink-muted-48">{dia.dia_semana}</span>}
                 </div>
                 {dia.custo_total != null && <span className="text-sm font-medium text-ink">{formatCurrency(dia.custo_total)}</span>}
@@ -123,7 +123,7 @@ export default function CardapioDetailPage() {
                   {(dia.refeicoes || []).map((ref, ri) => (
                     <div key={ri} className="flex items-center justify-between px-5 py-3">
                       <div>
-                        <span className="text-xs font-medium uppercase tracking-wide text-primary">
+                        <span className="text-xs font-medium uppercase tracking-wide text-ink-muted-80">
                           {TIPOS_REFEICAO[ref.tipo_refeicao] || ref.tipo_refeicao}
                         </span>
                         <p className="mt-0.5 text-sm text-ink">{ref.nome_prato || ref.ficha_tecnica_nome || "—"}</p>
@@ -140,7 +140,7 @@ export default function CardapioDetailPage() {
 
       {cardapio.observacoes && (
         <div className="mt-4 rounded-lg border border-hairline bg-white p-5">
-          <h3 className="mb-2 font-display text-[18px] text-ink">Observações</h3>
+          <h3 className="mb-2 text-lg font-medium text-ink">Observações</h3>
           <p className="text-sm text-ink-muted-80 whitespace-pre-wrap">{cardapio.observacoes}</p>
         </div>
       )}

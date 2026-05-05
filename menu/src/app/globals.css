@@ -1,73 +1,31 @@
+@import "../../../design-system/tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================================
-   Menu.AI App — Airtable-Inspired Design System
-   Editorial, whitespace-driven, coral brand voltage
-   ============================================================ */
-
 @layer base {
   :root {
-    /* Brand coral */
-    --color-primary: #FF5A36;
-    --color-primary-focus: #E03D1A;
-    --color-primary-active: #cc3a1a;
-
-    /* Ink — Airtable dark */
-    --color-ink: #181d26;
-    --color-ink-muted-80: #333840;
-    --color-ink-muted-48: #41454d;
-    --color-ink-border-strong: #9297a0;
-
-    /* Surfaces */
-    --color-canvas: #ffffff;
-    --color-pearl: #ffffff;
-    --color-hairline: #dddddd;
-
-    /* Signature surfaces */
-    --color-surface-soft: #f8fafc;
-    --color-surface-strong: #e0e2e6;
-    --color-surface-dark: #181d26;
-    --color-signature-coral: #FF5A36;
-    --color-signature-cream: #f5e9d4;
-    --color-signature-forest: #0a2e0e;
-
-    /* Semantic */
-    --color-success: #006400;
-    --color-success-border: #39bf45;
-    --color-link: #1b61c9;
-    --color-info: #254fad;
-    --color-info-border: #458fff;
-    --color-danger: #dc2626;
-
-    /* Radius — Airtable hierarchy */
-    --radius-xs: 2px;
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 12px;
-    --radius-pill: 9999px;
-
-    /* shadcn compat */
+    /* shadcn — primário = ink (CTA), anel = info */
     --background: 0 0% 100%;
-    --foreground: 210 19% 13%;
+    --foreground: 218 21% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 210 19% 13%;
+    --card-foreground: 218 21% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 210 19% 13%;
-    --primary: 14 100% 60%;
+    --popover-foreground: 218 21% 12%;
+    --primary: 218 21% 12%;
     --primary-foreground: 0 0% 100%;
     --secondary: 220 14% 96%;
-    --secondary-foreground: 210 19% 13%;
+    --secondary-foreground: 218 21% 12%;
     --muted: 220 14% 96%;
     --muted-foreground: 220 8% 28%;
-    --accent: 14 100% 60%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 218 21% 12%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 14 100% 60%;
+    --border: 220 13% 86%;
+    --input: 220 13% 86%;
+    --ring: 217 91% 60%;
     --radius: 0.625rem;
   }
 
@@ -77,41 +35,38 @@
 
   body {
     @apply bg-canvas text-ink antialiased;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: var(--font-inter, "Inter"), system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Outfit', system-ui, sans-serif;
+    font-family: var(--font-inter, "Inter"), system-ui, sans-serif;
     font-weight: 400;
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
+    color: var(--color-ink);
   }
 
   ::selection {
-    background-color: rgba(255, 90, 54, 0.15);
+    background-color: rgba(24, 29, 38, 0.12);
   }
 }
 
 @layer components {
-  /* Glassmorphism utility */
   .glass {
-    @apply bg-white/80 backdrop-blur-xl border border-hairline shadow-lg;
+    @apply border border-hairline bg-white/90 backdrop-blur-md;
   }
 
-  /* Flat card — Airtable style */
   .card-menu {
-    @apply bg-white rounded-md border border-hairline transition-colors;
+    @apply rounded-md border border-hairline bg-white transition-colors;
   }
 
-  /* Ghost button */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-ink-muted-48 transition-colors hover:bg-ink/[0.03] hover:text-ink;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-ink-muted-48 transition-colors hover:bg-ink/[0.04] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border;
   }
 
-  /* Airtable signature card surfaces */
   .signature-coral {
-    @apply rounded-lg bg-primary text-white;
+    @apply rounded-lg bg-signature-coral text-white;
   }
 
   .signature-cream {
@@ -124,5 +79,17 @@
 
   .signature-forest {
     @apply rounded-lg bg-signature-forest text-white;
+  }
+
+  .text-link {
+    color: var(--color-link);
+    font-size: 0.875rem;
+    text-decoration: none;
+  }
+  .text-link:hover {
+    text-decoration: underline;
+  }
+  .text-link:active {
+    color: var(--color-link-active);
   }
 }

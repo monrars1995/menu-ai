@@ -130,6 +130,8 @@ def _run_with_tools(
     step_callback: Any,
     agent_name: str,
     extra_headers: Optional[dict] = None,
+    *,
+    model_router=None,  # Optional ModelRouter instance for fallback
 ) -> str:
     openai_tools = _to_openai_tools(tools)
     idx = _index_tools(tools)
@@ -138,23 +140,36 @@ def _run_with_tools(
         {"role": "user", "content": user},
     ]
     for _ in range(MAX_TOOL_TURNS):
-        kwargs: dict = {
-            "model": model,
-            "messages": messages,
-            "temperature": float(os.getenv("LLM_TEMPERATURE", "0.7") or 0.7),
-        }
-        if api_key:
-            kwargs["api_key"] = api_key
-        if api_base:
-            kwargs["api_base"] = api_base
-        if extra_headers:
-            kwargs["extra_headers"] = extra_headers
-        if openai_tools:
-            kwargs["tools"] = openai_tools
-        try:
-            resp = completion(**kwargs)
-        except Exception as e:
-            return f"[ERRO LLM] {e!s}"
+        if model_router is not None:
+            # Usa ModelRouter com fallback automático
+            result = model_router.call(
+                messages=messages,
+                tools=openai_tools if openai_tools else None,
+                extra_headers=extra_headers,
+            )
+            if not result.success:
+                return f"[ERRO LLM] {result.error}"
+            resp = result.response
+        else:
+            # Chamada direta (compatibilidade)
+            kwargs: dict = {
+                "model": model,
+                "messages": messages,
+                "temperature": float(os.getenv("LLM_TEMPERATURE", "0.7") or 0.7),
+            }
+            if api_key:
+                kwargs["api_key"] = api_key
+            if api_base:
+                kwargs["api_base"] = api_base
+            if extra_headers:
+                kwargs["extra_headers"] = extra_headers
+            if openai_tools:
+                kwargs["tools"] = openai_tools
+            try:
+                resp = completion(**kwargs)
+            except Exception as e:
+                return f"[ERRO LLM] {e!s}"
+
         if not resp.choices:
             return ""
         choice = resp.choices[0]
@@ -219,7 +234,15 @@ def run_lite_pipeline(crew) -> str:
     steps = build_steps(crew)
     prior: List[str] = []
     last_out = ""
-    for st in steps:
+
+    # Tenta importar ModelRouter (fallback gracioso se falhar)
+    _ModelRouter = None
+    try:
+        from pipeline.model_router import ModelRouter as _ModelRouter
+    except Exception:
+        pass
+
+    for step_idx, st in enumerate(steps):
         ctx = ""
         if prior:
             acc = "\n\n".join(prior)
@@ -227,6 +250,21 @@ def run_lite_pipeline(crew) -> str:
                 acc = acc[: MAX_PRIOR_LEN - 3] + "..."
             ctx = f"\n\n## Contexto de etapas anteriores\n{acc}\n"
         u = st.user + ctx
+
+        # Cria ModelRouter por etapa (com contexto de job/empresa/step)
+        router = None
+        if _ModelRouter is not None:
+            try:
+                router = _ModelRouter(
+                    model_id=mo,
+                    job_id=getattr(crew, "_job_id", None),
+                    empresa_id=getattr(crew, "empresa_id", None),
+                    step_label=st.label,
+                    step_index=step_idx,
+                )
+            except Exception:
+                pass
+
         out = _run_with_tools(
             cfg.model,
             cfg.api_key,
@@ -237,6 +275,7 @@ def run_lite_pipeline(crew) -> str:
             crew.step_callback,
             st.label,
             extra_headers=getattr(cfg, "extra_headers", None),
+            model_router=router,
         )
         last_out = out
         prior.append(f"## {st.label}\n{out}")
@@ -253,3 +292,49 @@ def run_lite_pipeline(crew) -> str:
     crew.ctx.etapa_atual = "concluido"
     crew.ctx.cardapio_final = last_out
     return last_out
+
+
+def run_lite_pipeline_step(
+    orchestrator,
+    step_index: int,
+    tools: dict,
+) -> str:
+    """
+    Executa UMA ÚNICA etapa do pipeline.
+    Usado no fluxo human-in-the-loop para rodar apenas a análise de contrato.
+
+    Args:
+        orchestrator: MenuOrchestrator instance
+        step_index: índice da etapa (0 = Analista de Contratos)
+        tools: dicionário de ferramentas
+    """
+    mo = getattr(orchestrator, "llm_model_id", None)
+    cfg = get_litellm_config(model_override=mo)
+    steps = build_steps(orchestrator)
+
+    if step_index >= len(steps):
+        return "[ERRO] Índice de etapa inválido."
+
+    st = steps[step_index]
+    out = _run_with_tools(
+        cfg.model,
+        cfg.api_key,
+        cfg.api_base,
+        st.system,
+        st.user,
+        st.tools,
+        orchestrator.step_callback,
+        st.label,
+        extra_headers=getattr(cfg, "extra_headers", None),
+    )
+
+    orchestrator.ctx.etapa_atual = st.label
+    if orchestrator.task_callback:
+        try:
+            orchestrator.task_callback(
+                SimpleNamespace(agent=st.label, raw=out)
+            )
+        except Exception:
+            pass
+
+    return out

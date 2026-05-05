@@ -45,7 +45,7 @@ function SectionCard({ title, icon: Icon, children, defaultOpen = true }: {
         className="flex w-full items-center justify-between px-4 py-3 text-left"
       >
         <span className="flex items-center gap-2 text-sm font-medium text-ink">
-          {Icon && <Icon size={14} className="text-primary" />}
+          {Icon && <Icon size={14} className="text-ink" />}
           {title}
         </span>
         {open ? <ChevronDown size={14} className="text-ink-muted-48" /> : <ChevronRightIcon size={14} className="text-ink-muted-48" />}
@@ -195,7 +195,7 @@ export default function ContratosPage() {
         </label>
         <button onClick={() => openEdit(c)} className="rounded-md p-1 text-ink-muted-48 hover:bg-surface-soft hover:text-ink"><Pencil size={14} /></button>
         <button onClick={() => setDeleting(c)} className="rounded-md p-1 text-ink-muted-48 hover:bg-red-50 hover:text-red-600"><Trash2 size={14} /></button>
-        <button onClick={() => loadAnalise(c)} className="rounded-md p-1 text-primary hover:bg-primary/5" title="Ver análise"><ChevronRight size={14} /></button>
+        <button onClick={() => loadAnalise(c)} className="rounded-md p-1 text-link hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border" title="Ver análise"><ChevronRight size={14} /></button>
       </div>
     )},
   ];
@@ -209,7 +209,7 @@ export default function ContratosPage() {
       <div className="fixed inset-y-0 right-0 z-40 w-full max-w-xl bg-white shadow-2xl border-l border-hairline overflow-y-auto">
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-hairline bg-white px-5 py-3">
           <div>
-            <h2 className="font-display text-[20px] text-ink">{selected.nome}</h2>
+            <h2 className="text-[20px] font-medium text-ink">{selected.nome}</h2>
             <p className="text-xs text-ink-muted-48">Análise do contrato</p>
           </div>
           <button onClick={() => setShowAnalise(false)} className="rounded-md p-1.5 text-ink-muted-48 hover:bg-surface-soft">
@@ -307,7 +307,7 @@ export default function ContratosPage() {
                 <button
                   onClick={loadGramatura}
                   disabled={loadingGramatura}
-                  className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-active disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2 disabled:opacity-50"
                 >
                   <TrendingUp size={14} />
                   {loadingGramatura ? "Calculando…" : "Conferir Gramatura vs Fichas"}
@@ -405,7 +405,7 @@ export default function ContratosPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted-48" />
           <input
             type="text" placeholder="Buscar contratos…" value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-md border border-hairline bg-white py-2 pl-8 pr-3 text-sm placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border"
+            className="w-full rounded-md border border-hairline bg-white py-2 pl-8 pr-3 text-sm placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]"
           />
         </div>
       </div>
@@ -425,36 +425,36 @@ export default function ContratosPage() {
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-muted-80">Nome *</label>
             <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} required
-              className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border" />
+              className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-muted-80">Nº Contrato</label>
               <input value={form.numero_contrato} onChange={(e) => setForm({ ...form, numero_contrato: e.target.value })}
-                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border" />
+                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-muted-80">Custo Total Máx. (R$)</label>
               <input type="number" step="0.01" value={form.custo_total_max} onChange={(e) => setForm({ ...form, custo_total_max: e.target.value })}
-                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border" />
+                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-muted-80">Data Início</label>
               <input type="date" value={form.data_inicio} onChange={(e) => setForm({ ...form, data_inicio: e.target.value })}
-                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border" />
+                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-ink-muted-80">Data Fim</label>
               <input type="date" value={form.data_fim} onChange={(e) => setForm({ ...form, data_fim: e.target.value })}
-                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border" />
+                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
             </div>
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium text-ink-muted-80">Observações</label>
             <textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} rows={3}
-              className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-1 focus:ring-info-border" />
+              className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" size="sm" onClick={() => setShowCreate(false)}>Cancelar</Button>

@@ -34,13 +34,13 @@ export function MealSelector({ selected, onChange }: { selected: string[]; onCha
               onClick={() => toggle(ref.key)}
               className={`flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm font-medium transition-all ${
                 active
-                  ? "border-primary bg-primary/5 text-primary"
+                  ? "border-ink bg-primary-subtle text-ink"
                   : "border-hairline bg-white text-ink-muted-48 hover:bg-surface-soft"
               }`}
             >
               <Icon size={14} />
               <span className="truncate">{ref.label}</span>
-              {active && <span className="ml-auto text-xs font-semibold text-primary">✓</span>}
+              {active && <span className="ml-auto text-xs font-medium text-ink">✓</span>}
             </button>
           );
         })}

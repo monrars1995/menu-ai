@@ -10,7 +10,7 @@ interface SpinnerProps {
 export function Spinner({ size = 20, className }: SpinnerProps) {
   return (
     <div
-      className={cn("animate-spin rounded-full border-2 border-primary border-t-transparent", className)}
+      className={cn("animate-spin rounded-full border-2 border-hairline border-t-ink", className)}
       style={{ width: size, height: size }}
     />
   );

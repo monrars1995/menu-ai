@@ -278,6 +278,28 @@ def recalcular(
     return FichaTecnicaOut.model_validate(ficha)
 
 
+@router.post("/recalcular-todas", summary="Recalcular todas as fichas da empresa")
+def recalcular_todas(
+    db: Session = Depends(get_db),
+    usuario=Depends(exigir_role("super_admin", "admin")),
+):
+    """
+    Recalcula custos e nutrição de TODAS as fichas técnicas ativas da empresa.
+    Útil após atualização em massa de preços de ingredientes ou importação.
+    """
+    from services.cascata import recalcular_todas_fichas_empresa
+
+    empresa_id = usuario.empresa_id
+    total = recalcular_todas_fichas_empresa(db, empresa_id)
+    db.commit()
+    return {
+        "ok": True,
+        "fichas_recalculadas": total,
+        "empresa_id": empresa_id,
+        "mensagem": f"{total} ficha(s) técnica(s) recalculada(s) com sucesso.",
+    }
+
+
 @router.delete("/{ficha_id}", status_code=status.HTTP_204_NO_CONTENT,
                summary="Desativar ficha técnica")
 def desativar(

@@ -58,7 +58,7 @@ export default function LlmPage() {
 
       {loading ? (
         <div className="flex h-40 items-center justify-center">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-hairline)] border-t-[var(--color-primary)]" />
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-hairline)] border-t-[var(--color-ink)]" />
         </div>
       ) : (
         <div className="space-y-2">

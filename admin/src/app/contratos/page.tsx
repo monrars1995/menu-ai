@@ -181,7 +181,7 @@ export default function ContratosPage() {
         <h1 className="text-page-title mb-1">Contratos</h1>
         <p className="text-subtitle mb-4">Upload e análise de contratos</p>
         {loading ? (
-          <div className="flex h-32 items-center justify-center"><Loader2 size={16} className="animate-spin" style={{ color: "var(--color-primary)" }} /></div>
+          <div className="flex h-32 items-center justify-center"><Loader2 size={16} className="animate-spin" style={{ color: "var(--color-ink)" }} /></div>
         ) : (
           <div className="space-y-1">
             {contratos.map((c) => (
@@ -191,10 +191,10 @@ export default function ContratosPage() {
                 className={`w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
                   selected?.id === c.id ? "font-medium" : "hover:bg-[var(--surface-subtle)]"
                 }`}
-                style={selected?.id === c.id ? { background: "var(--color-primary-subtle)", color: "var(--color-primary)" } : { color: "var(--text-primary)" }}
+                style={selected?.id === c.id ? { background: "var(--color-primary-subtle)", color: "var(--color-ink)" } : { color: "var(--text-primary)" }}
               >
                 <div>{c.nome}</div>
-                <div className="text-xs" style={{ color: selected?.id === c.id ? "var(--color-primary)" : "var(--text-tertiary)" }}>
+                <div className="text-xs" style={{ color: selected?.id === c.id ? "var(--color-muted)" : "var(--text-tertiary)" }}>
                   {c.numero_contrato || "Sem número"} {c.arquivo_path ? "· PDF" : "· Sem arquivo"}
                 </div>
               </button>
@@ -222,7 +222,7 @@ export default function ContratosPage() {
                 onDragLeave={() => setDragOver(false)}
                 onDrop={onDrop}
                 className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
-                  dragOver ? "border-[var(--color-primary)]" : "border-[var(--color-hairline-strong)]"
+                  dragOver ? "border-[var(--color-info-border)]" : "border-[var(--color-hairline-strong)]"
                 }`}
                 style={dragOver ? { background: "var(--color-primary-subtle)" } : {}}
               >
@@ -280,7 +280,7 @@ export default function ContratosPage() {
                           {Object.entries(analise.gramaturas).map(([cat, val]) => (
                             <div key={cat} className="rounded-lg px-3 py-2 text-center" style={{ background: "var(--surface-subtle)" }}>
                               <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>{cat}</div>
-                              <div className="text-lg font-semibold" style={{ color: "var(--color-primary)" }}>{val}</div>
+                              <div className="text-lg font-semibold" style={{ color: "var(--color-brand)" }}>{val}</div>
                             </div>
                           ))}
                         </div>

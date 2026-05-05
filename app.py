@@ -718,6 +718,68 @@ async def job_status(job_id: str, usuario: Optional[Usuario] = Depends(get_usuar
     return j
 
 
+# ============================================================
+# Human-in-the-Loop: Confirmação do contrato
+# ============================================================
+from pydantic import BaseModel, Field
+
+
+class ConfirmacaoBody(BaseModel):
+    """Body para confirmação ou rejeição da análise do contrato."""
+    confirmar: bool = Field(True, description="True para confirmar e continuar, False para cancelar")
+    ajustes: Optional[str] = Field(None, description="Ajustes/observações textuais a incorporar na geração")
+
+
+@app.post("/api/gerar/{job_id}/confirmar")
+@limiter.limit("30/minute")
+async def confirmar_geracao(
+    request: Request,
+    job_id: str,
+    body: ConfirmacaoBody,
+    usuario: Optional[Usuario] = Depends(get_usuario_geracao),
+):
+    """
+    Confirma ou rejeita a análise do contrato no fluxo human-in-the-loop.
+
+    - `confirmar: true` → a geração continua com o pipeline completo
+    - `confirmar: false` → cancela o job
+    - `ajustes` (opcional) → texto livre com observações que serão incorporadas à geração
+    """
+    j = job_state.jobs.get(job_id)
+    if not j:
+        raise HTTPException(404, f"Job '{job_id}' não encontrado")
+
+    if j.get("status") != "aguardando_confirmacao":
+        raise HTTPException(
+            400,
+            f"Job '{job_id}' não está aguardando confirmação (status atual: {j.get('status')})",
+        )
+
+    if not body.confirmar:
+        j["status"] = "erro"
+        j["error"] = "Geração cancelada pelo usuário após análise do contrato."
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "status": "cancelado",
+            "mensagem": "Geração cancelada. O job não será processado.",
+        }
+
+    # Aplica ajustes se fornecidos
+    if body.ajustes:
+        j["ajustes_usuario"] = body.ajustes
+
+    # Retoma a execução — muda status para que o loop no worker desbloqueie
+    j["status"] = "executando"
+
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "status": "executando",
+        "mensagem": "Confirmação recebida. A geração do cardápio foi retomada.",
+        "ajustes_aplicados": bool(body.ajustes),
+    }
+
 @app.get("/api/download/{job_id}")
 async def download(job_id: str, formato: str = "xlsx", usuario: Optional[Usuario] = Depends(get_usuario_geracao)):
     j = get_job_or_restore(job_id, _db_ok) if _db_ok else job_state.jobs.get(job_id)

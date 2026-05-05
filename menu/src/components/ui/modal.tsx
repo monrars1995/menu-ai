@@ -33,7 +33,7 @@ export function Modal({ open, onClose, title, children, className, size = "md" }
       <div className={cn("w-full rounded-lg bg-white", sizeMap[size], className)}>
         {title && (
           <div className="flex items-center justify-between border-b border-hairline px-5 py-4">
-            <h2 className="font-display text-lg text-ink">{title}</h2>
+            <h2 className="text-lg font-medium text-ink">{title}</h2>
             <button onClick={onClose} className="rounded-md p-1 text-ink-muted-48 hover:bg-surface-soft hover:text-ink">
               <X size={18} />
             </button>
