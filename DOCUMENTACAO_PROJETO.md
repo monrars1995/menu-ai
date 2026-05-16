@@ -1,94 +1,96 @@
-# Menu.AI — Documentação do projeto
+# Menu.AI — Documentação do Projeto
 
-Documento de referência do repositório **Menu.AI v3.2.0**: arquitetura, operação, dados, API e pipeline de IA.
+> **Versão API:** 3.3.0 | **Framework:** FastAPI + Next.js | **IA:** LiteLLM + OpenRouter
 
-## Visão geral
+Documento de referência do repositório **Menu.AI**: arquitetura, operação, dados, API e pipeline de IA.
+
+## 📖 Documentação Completa
+
+A documentação técnica detalhada está em **[docs/index.md](docs/index.md)**, incluindo:
+
+- Visão geral e arquitetura
+- Modelo de dados (13 tabelas)
+- Pipeline LLM de 7 etapas
+- Autenticação e RBAC
+- Endpoints da API
+- Deployment (Docker Compose / Stack)
+- Variáveis de ambiente
+- Dependências
+
+## Visão Geral
 
 | Item | Descrição |
 |------|-----------|
 | **Nome** | Menu.AI |
-| **Versão API** | 3.2.0 |
-| **Propósito** | API FastAPI multi-tenant para empresas, utilizadores, contratos, ingredientes, fichas técnicas, cardápios e jobs de geração. |
-| **LLM** | OpenRouter via LiteLLM |
-| **Modelos iniciais** | `queen-3.6`, `glm-5-1`, `kimi-k2.5` |
-| **Front-end** | `templates/index.html` servido em `GET /` |
+| **Versão API** | 3.3.0 |
+| **Propósito** | API FastAPI multi-tenant para planejamento inteligente de cardápios coletivos |
+| **LLM** | OpenRouter via LiteLLM (7 agentes sequenciais) |
+| **Auth** | Supabase (JWKS/ES256) + fallback legado (HS256) |
+| **Frontends** | Menu (Next.js :3000) + Admin (Next.js :8001) |
 
 ## Stack
 
-- Python 3.11+
-- FastAPI, Uvicorn, SlowAPI
-- SQLAlchemy 2.x, Alembic
-- PostgreSQL no fluxo suportado de desenvolvimento
-- LiteLLM sobre OpenRouter
-- Pandas, openpyxl, pdfplumber
+- Python 3.11+ — FastAPI, Uvicorn, SlowAPI
+- SQLAlchemy 2.x + Alembic — PostgreSQL (Supabase) / SQLite (dev)
+- LiteLLM + LangChain — Pipeline de agentes IA
+- Next.js — Frontends (menu + admin)
+- Docker — Compose (dev) + Stack (produção)
 
-## Estrutura principal
+## Estrutura Principal
 
 ```text
 MENU I.A/
-├── app.py
-├── start.py
-├── run_server.py
-├── crew/
-├── database/
-├── routers/
-├── services/
-├── tools/
-├── templates/
-├── static/
-├── scripts/
-├── alembic/
-├── docker-compose.yml
-├── .env.example
-├── INICIAR.md
-└── README.md
+├── app.py                    # Composição FastAPI
+├── run_server.py             # Entry point produção
+├── start.py                  # Entry point dev
+├── seed_data.py              # Seed de dados
+├── database/                 # ORM, conexão, schemas
+├── pipeline/                 # Motor de IA (7 etapas)
+├── routers/                  # Endpoints API (auth, cardapios, fichas...)
+├── services/                 # Workers, estado de jobs
+├── tools/                    # Ferramentas LLM (db_tools, cardapio_tools)
+├── menu/                     # Frontend público (Next.js)
+├── admin/                    # Painel admin (Next.js)
+├── scripts/                  # Utilitários
+├── alembic/                  # Migrações
+├── docker-compose.yml        # Dev
+├── docker-stack.yml          # Produção
+├── docs/                     # Documentação técnica
+│   ├── index.md              # Doc completa
+│   └── project-scan-report.json
+└── .env.example
 ```
-
-## Banco de dados
-
-- O ambiente suportado de desenvolvimento usa PostgreSQL em Docker:
-  `postgresql+psycopg2://menuai:menuai123@127.0.0.1:5432/menuai_db`
-- `app.py`, Alembic e `seed_data.py` devem usar a mesma `DATABASE_URL`
-- Migração oficial: `alembic upgrade head`
-
-## LLM e OpenRouter
-
-- Provider único suportado: OpenRouter
-- Endpoint base: `https://openrouter.ai/api/v1`
-- Catálogo interno em `crew/openrouter_models.py`
-- Endpoint público: `GET /api/llm-models`
-- Seleção enviada pela UI em `POST /api/gerar`
-
-Mapeamento inicial:
-- `queen-3.6` -> `qwen/qwen3.6-plus`
-- `glm-5-1` -> `z-ai/glm-5.1`
-- `kimi-k2.5` -> `moonshotai/kimi-k2.5`
-
-## Endpoints principais
-
-- `GET /api/health`
-- `GET /api/info`
-- `GET /api/llm-models`
-- `POST /api/upload-contrato`
-- `POST /api/gerar`
-- `GET /api/status/{job_id}`
-- `GET /api/stream/{job_id}`
-- `GET /api/download/{job_id}`
 
 ## Execução
 
-- Setup inicial: `./setup.sh`
-- Servidor sem reload: `python3 run_server.py`
-- Servidor dev: `python3 start.py`
-- Verificação: `python3 scripts/verify_stack.py`
-- Smoke: `python3 scripts/smoke_flow.py`
+```bash
+# Setup
+source venv/bin/activate
 
-## Arquivos de referência
+# Dev (com reload)
+python3 start.py
 
-- `INICIAR.md`
-- `CLAUDE.md`
-- `.env.example`
-- `README.md`
+# Produção
+python3 run_server.py
+
+# Docker
+docker compose up -d
+
+# Migrações
+bash scripts/alembic_upgrade.sh
+
+# Verificação
+python3 scripts/verify_stack.py
+```
+
+## Arquivos de Referência
+
+- [docs/index.md](docs/index.md) — Documentação técnica completa
+- [INICIAR.md](INICIAR.md) — Guia de início rápido
+- [AGENTS.md](AGENTS.md) — Contexto para agentes IA
+- [CLAUDE.md](CLAUDE.md) — Instruções para Claude
+- [.env.example](.env.example) — Variáveis de ambiente
+- [README.md](README.md) — README do repositório
 
 ## Contato
 

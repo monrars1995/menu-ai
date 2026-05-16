@@ -1,0 +1,133 @@
+{
+  "scan_metadata": {
+    "scan_type": "deep",
+    "scan_date": "2026-05-16T19:50:00-03:00",
+    "scanner_version": "bmad-document-project/1.0",
+    "project_root": "/Volumes/goldneuronio/MENU I.A"
+  },
+  "project_identity": {
+    "name": "Menu.AI",
+    "version": "3.3.0",
+    "description": "Sistema inteligente de planejamento de cardápios para refeições coletivas com agentes LLM",
+    "type": "backend",
+    "secondary_types": ["web"],
+    "language_primary": "python",
+    "language_secondary": ["javascript", "typescript"],
+    "framework": "FastAPI",
+    "license": "Proprietary"
+  },
+  "architecture": {
+    "pattern": "modular-monolith",
+    "api_style": "REST",
+    "auth_strategy": "JWT (Supabase JWKS + Legacy HS256)",
+    "database": {
+      "orm": "SQLAlchemy",
+      "engines": ["PostgreSQL (Supabase)", "SQLite (dev)"],
+      "migrations": "Alembic",
+      "vector_support": "pgvector (optional)"
+    },
+    "ai_pipeline": {
+      "orchestrator": "pipeline/orchestrator.py (MenuOrchestrator)",
+      "runner": "pipeline/litellm_runner.py (LiteLLM sequential)",
+      "model_router": "pipeline/model_router.py (cross-provider fallback)",
+      "steps": 7,
+      "step_labels": [
+        "Analista de Contratos e Regras de Negócio",
+        "Gestor de Fichas Técnicas e Repertório de Pratos",
+        "Nutricionista Planejadora de Cardápios Coletivos",
+        "Analista Nutricional e de Conformidade Regulatória",
+        "Controller Financeiro de Custos de Alimentação",
+        "Agente de Compras e Gestão de Insumos",
+        "Exportador e Consolidador de Cardápios"
+      ],
+      "llm_providers": ["OpenRouter (primary)", "Groq", "OpenAI", "Anthropic", "Qwen", "Ollama (legacy)"]
+    },
+    "multi_tenant": true,
+    "tenant_key": "empresa_id"
+  },
+  "directory_structure": {
+    "root_files": ["app.py", "run_server.py", "start.py", "seed_data.py", "requirements.txt", "docker-compose.yml", "docker-stack.yml", "Dockerfile", "alembic.ini"],
+    "modules": {
+      "database/": "ORM models, connection, schemas (Pydantic), migrações",
+      "pipeline/": "Orquestrador LLM, runner sequencial, catálogo de modelos, model router",
+      "routers/": "Endpoints FastAPI (auth, cardapios, fichas, ingredientes, contratos, empresas, chat)",
+      "services/": "Workers de geração, estado de jobs, cache de fichas DB",
+      "tools/": "Ferramentas LLM (db_tools, cardapio_tools, compat)",
+      "config/": "Diretório de configuração (vazio - config via env)",
+      "scripts/": "Scripts de utilidade, patches legados, deploy",
+      "alembic/": "Migrações de banco de dados",
+      "menu/": "Frontend Next.js (cardápio público)",
+      "admin/": "Painel administrativo Next.js",
+      "data/": "Diretório de uploads e dados",
+      "docs/": "Documentação do projeto",
+      "supabase/": "Configuração Supabase (Edge Functions, RLS)"
+    }
+  },
+  "data_model": {
+    "tables": [
+      {"name": "empresas", "description": "Clientes/empresas contratantes (tenant root)"},
+      {"name": "usuarios", "description": "Usuários com roles por empresa"},
+      {"name": "contratos", "description": "Contratos de fornecimento de refeições"},
+      {"name": "ingredientes", "description": "Insumos com custo real e fator de correção"},
+      {"name": "fichas_tecnicas", "description": "Receitas com modo de preparo e dados nutricionais"},
+      {"name": "ficha_ingredientes", "description": "Junction table: ingredientes por receita"},
+      {"name": "cardapios", "description": "Cardápios gerados (por empresa e período)"},
+      {"name": "cardapio_dias", "description": "Dias individuais de um cardápio"},
+      {"name": "cardapio_refeicoes", "description": "Pratos de cada dia"},
+      {"name": "aprovacoes_cardapio", "description": "Workflow de aprovação de cardápios"},
+      {"name": "jobs_agente", "description": "Rastreamento de jobs dos agentes IA"},
+      {"name": "sessoes_chat", "description": "Sessões de chat conversacional"},
+      {"name": "mensagens_chat", "description": "Mensagens individuais do chat"}
+    ]
+  },
+  "deployment": {
+    "containerized": true,
+    "services": ["app (FastAPI)", "admin (Next.js)", "menu (Next.js)"],
+    "docker_compose": true,
+    "docker_stack": true,
+    "port_app": 8000,
+    "port_admin": 8001,
+    "port_menu": 3000,
+    "healthcheck": "/api/health"
+  },
+  "dependencies": {
+    "python": {
+      "framework": "fastapi",
+      "orm": "sqlalchemy",
+      "llm": ["litellm", "langchain", "langchain-core", "langchain-community"],
+      "auth": ["PyJWT", "python-jose", "httpx"],
+      "export": ["openpyxl", "reportlab", "pandas"],
+      "database": ["alembic", "psycopg2-binary", "pgvector"],
+      "server": ["uvicorn", "python-dotenv", "slowapi"],
+      "other": ["pdfplumber", "beautifulsoup4"]
+    },
+    "frontend_menu": {
+      "framework": "next.js",
+      "ui": ["@supabase/supabase-js", "lucide-react", "framer-motion", "recharts"]
+    },
+    "frontend_admin": {
+      "framework": "next.js",
+      "ui": ["@supabase/supabase-js", "lucide-react"]
+    }
+  },
+  "environment_variables": {
+    "critical": [
+      "SECRET_KEY", "DATABASE_URL", "SUPABASE_DB_URL",
+      "SUPABASE_URL", "SUPABASE_PUBLISHABLE_KEY", "SUPABASE_SERVICE_ROLE_KEY",
+      "OPENROUTER_API_KEY"
+    ],
+    "optional": [
+      "CORS_ORIGINS", "DEBUG", "CREATE_ALL_ON_START",
+      "DEMO_GERAR_SEM_AUTH", "ALLOW_OPEN_REGISTRO",
+      "DEFAULT_EMPRESA_ID", "OPENROUTER_DEFAULT_MODEL",
+      "MENUAI_LLM_LEGACY", "FICHAS_DB_STATS_TTL",
+      "LLM_TEMPERATURE"
+    ]
+  },
+  "security": {
+    "auth_providers": ["Supabase (JWKS/ES256)", "Legacy JWT (HS256)"],
+    "rbac_roles": ["super_admin", "admin", "nutricionista", "gestor", "visualizador"],
+    "rate_limiting": "slowapi",
+    "cors": "Configurable via CORS_ORIGINS env"
+  }
+}
