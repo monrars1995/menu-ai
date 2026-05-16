@@ -189,9 +189,11 @@ def build_steps(crew) -> List[PipelineStep]:
     # Nutricionista — formato de saída adapta conforme número de refeições
     fmt_cols = "| Dia | Refeição | Categoria | Código | Prato | Custo (R$) |" if len(ref_lista) > 1 else "| Dia | Categoria | Código | Prato | Custo (R$) |"
     custo_msg = (
-        f"7. Mantenha custo total ≤ R${tc:.2f} e proteico ≤ R${tcp:.2f} POR REFEIÇÃO.\n"
+        f"7. O Preço Unitário (PU) ALVO total da refeição é RIGOROSAMENTE R${tc:.2f} e proteico R${tcp:.2f} POR REFEIÇÃO.\n"
+        "   Se não for possível atingir o PU exato com as fichas disponíveis, componha o cardápio mais próximo possível desse valor e gere uma justificativa clara detalhando o motivo (ex: custo base dos ingredientes indisponível nesse preço).\n"
         if len(ref_lista) > 1 else
-        f"7. Mantenha custo total ≤ R${tc:.2f} e proteico ≤ R${tcp:.2f}.\n"
+        f"7. O Preço Unitário (PU) ALVO total da refeição é RIGOROSAMENTE R${tc:.2f} e proteico R${tcp:.2f}.\n"
+        "   Se não for possível atingir o PU exato com as fichas disponíveis, componha o cardápio mais próximo possível desse valor e gere uma justificativa clara detalhando o motivo (ex: custo base dos ingredientes indisponível nesse preço).\n"
     )
     u3 = (
         f"{ctx_r('Nutricionista')}\n\n"
@@ -236,8 +238,9 @@ def build_steps(crew) -> List[PipelineStep]:
         f"{ctx_r('Controller Financeiro')}\n\n"
         "=== SUA TAREFA ===\n"
         f"Valide os custos do cardápio proposto (veja o contexto). {ref_block}\n\n"
-        f"COMPARE com: total ≤ R${tc:.2f} | proteico ≤ R${tcp:.2f} POR REFEIÇÃO.\n"
-        "Documente aprovação ou dias/refeições problema com substituições sugeridas."
+        f"COMPARE RIGOROSAMENTE com o Preço Unitário (PU) Alvo: total de R${tc:.2f} | proteico de R${tcp:.2f} POR REFEIÇÃO.\n"
+        "O PU não é apenas uma estimativa, é um limite rígido. Verifique se as justificativas do Nutricionista detalham claramente o motivo (ex: custo base) caso o PU não seja atingido exatamente.\n"
+        "Documente aprovação ou aponte dias/refeições problema, exigindo correções ou substituições específicas para cravar o PU alvo."
     )
     u6 = (
         f"{ctx_r('Agente de Compras')}\n\n"
