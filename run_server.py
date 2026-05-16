@@ -16,10 +16,6 @@ load_dotenv()
 
 import uvicorn
 
-DEV_POSTGRES_URL = "postgresql+psycopg2://menuai:menuai123@127.0.0.1:5432/menuai_db"
-SUPABASE_PROJECT_URL = "https://mnqpgpckgqevepgfobzn.supabase.co"
-
-
 def ensure_dev_postgres() -> None:
     url = (os.getenv("SUPABASE_DB_URL") or os.getenv("DATABASE_URL") or "").strip()
     if not url:
@@ -29,7 +25,8 @@ def ensure_dev_postgres() -> None:
     if url.startswith("sqlite"):
         raise RuntimeError(
             "SQLite não é suportado neste fluxo. "
-            f"Use DATABASE_URL={DEV_POSTGRES_URL} ou SUPABASE_DB_URL do projeto {SUPABASE_PROJECT_URL}"
+            "Configure DATABASE_URL (PostgreSQL local) ou SUPABASE_DB_URL (Supabase). "
+            "Veja .env.example para exemplos."
         )
 
 if __name__ == "__main__":

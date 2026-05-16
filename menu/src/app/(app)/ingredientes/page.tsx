@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import api from "@/lib/api";
 import type { Ingrediente } from "@/lib/types";
 import { formatCurrency } from "@/lib/utils";
@@ -18,6 +18,7 @@ export default function IngredientesPage() {
   const [categorias, setCategorias] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Ingrediente | null>(null);
@@ -29,6 +30,12 @@ export default function IngredientesPage() {
     fornecedor: "", calorias_100g: "", proteina_100g: "", carboidrato_100g: "", gordura_100g: "",
     fibra_100g: "", sodio_100g: "", alergeno: false, tipo_alergeno: "",
   });
+
+  // Debounce da busca para performance
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => { load(); }, []);
 
@@ -91,11 +98,11 @@ export default function IngredientesPage() {
     setSaving(false);
   }
 
-  const filtered = ingredientes.filter((i) => {
-    const matchSearch = i.nome.toLowerCase().includes(search.toLowerCase()) || (i.codigo || "").toLowerCase().includes(search.toLowerCase());
+  const filtered = useMemo(() => ingredientes.filter((i) => {
+    const matchSearch = i.nome.toLowerCase().includes(debouncedSearch.toLowerCase()) || (i.codigo || "").toLowerCase().includes(debouncedSearch.toLowerCase());
     const matchCat = !catFilter || i.categoria === catFilter;
     return matchSearch && matchCat;
-  });
+  }), [ingredientes, debouncedSearch, catFilter]);
 
   const inputCls = "w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]";
 
@@ -115,7 +122,7 @@ export default function IngredientesPage() {
 
   return (
     <div>
-      <PageHeader title="Ingredientes" description="Catálogo de ingredientes e insumos" actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Novo Ingrediente</Button>} />
+      <PageHeader title="Ingredientes" description={`${filtered.length} ingrediente${filtered.length !== 1 ? "s" : ""} cadastrado${filtered.length !== 1 ? "s" : ""}`} actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Novo Ingrediente</Button>} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-xs">

@@ -26,7 +26,7 @@ Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, Pos
 ## Supabase + vetor
 
 - `SUPABASE_DB_URL`: conexão Postgres do projeto Supabase
-- `SUPABASE_URL`: `https://mnqpgpckgqevepgfobzn.supabase.co`
+- `SUPABASE_URL`: `https://seu-projeto.supabase.co`
 - `SUPABASE_PUBLISHABLE_KEY`: chave cliente pública (`sb_publishable_...`)
 - `SUPABASE_SECRET_KEY`: chave de backend (`sb_secret_...`) quando precisar chamar APIs privilegiadas do Supabase
 - `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `EMBEDDING_BASE_URL`: geração de embeddings

@@ -1,13 +1,13 @@
 """
-Menu.AI — Model Router com Fallback Automático
+Menu.AI — Model Router com Fallback Automático (Multi-Provider)
 
-Camada de resiliência que tenta múltiplos modelos em sequência.
+Camada de resiliência que tenta múltiplos modelos/providers em sequência.
 Se o modelo primário falhar (timeout, rate limit, erro 5xx),
-tenta automaticamente o próximo na cadeia de fallback.
+tenta automaticamente o próximo na cadeia de fallback (cross-provider).
 
 Uso:
     from pipeline.model_router import ModelRouter
-    router = ModelRouter(model_id="queen-3.6", job_id="abc123")
+    router = ModelRouter(model_id="gpt-4.1", job_id="abc123")
     result = router.call(messages=..., tools=...)
 """
 from __future__ import annotations
@@ -28,14 +28,6 @@ from litellm.exceptions import (
 )
 
 logger = logging.getLogger("menuai.model_router")
-
-# Fallback chains: model_id → lista de fallback model_ids
-# Se o modelo primário falha, tenta o próximo na lista
-_FALLBACK_CHAINS: Dict[str, List[str]] = {
-    "queen-3.6": ["glm-5-1", "kimi-k2.5"],
-    "glm-5-1": ["queen-3.6", "kimi-k2.5"],
-    "kimi-k2.5": ["queen-3.6", "glm-5-1"],
-}
 
 # Erros que devem acionar fallback (transitórios)
 _RETRIABLE_ERRORS = (
@@ -58,6 +50,8 @@ class ModelCallResult:
     """Resultado de uma chamada ao modelo."""
     response: Any = None
     model_used: str = ""
+    model_id: str = ""
+    provider_used: str = ""
     is_fallback: bool = False
     latency_ms: int = 0
     tokens_prompt: int = 0
@@ -72,11 +66,11 @@ class ModelCallResult:
 
 class ModelRouter:
     """
-    Router de modelos LLM com fallback automático e audit logging.
+    Router de modelos LLM com fallback automático cross-provider e audit logging.
 
     Encapsula a lógica de:
-    - Resolução de modelo (id interno → string LiteLLM)
-    - Fallback automático em caso de erro transitório
+    - Resolução de modelo (id interno → config completa via llm_providers)
+    - Fallback automático entre provedores (OpenAI → Gemini → OpenRouter)
     - Registro de audit log para cada tentativa
     """
 
@@ -88,22 +82,19 @@ class ModelRouter:
         step_label: Optional[str] = None,
         step_index: Optional[int] = None,
     ):
-        from pipeline.llm_litellm import get_litellm_config
-        from pipeline.openrouter_models import effective_default_model_id
+        from pipeline.llm_providers import get_default_model_id, get_fallback_chain
 
-        self.model_id = (model_id or "").strip() or effective_default_model_id()
+        self.model_id = (model_id or "").strip() or get_default_model_id()
         self.job_id = job_id
         self.empresa_id = empresa_id
         self.step_label = step_label
         self.step_index = step_index
-
-        self._cfg = get_litellm_config(model_override=self.model_id)
-        self._fallback_chain = _FALLBACK_CHAINS.get(self.model_id, [])
+        self._fallback_chain = get_fallback_chain(self.model_id)
 
     def _resolve_model_config(self, model_id: str):
-        """Resolve configuração LiteLLM para um dado model_id."""
-        from pipeline.llm_litellm import get_litellm_config
-        return get_litellm_config(model_override=model_id)
+        """Resolve configuração completa para um dado model_id."""
+        from pipeline.llm_providers import resolve_model_config
+        return resolve_model_config(model_id)
 
     def _extract_usage(self, response) -> dict:
         """Extrai métricas de uso do response."""
@@ -135,6 +126,7 @@ class ModelRouter:
         self,
         model_requested: str,
         model_used: str,
+        provider_used: str,
         is_fallback: bool,
         latency_ms: int,
         success: bool,
@@ -150,7 +142,7 @@ class ModelRouter:
                 empresa_id=self.empresa_id,
                 model_requested=model_requested,
                 model_used=model_used,
-                provider="openrouter",
+                provider=provider_used,
                 is_fallback=is_fallback,
                 step_label=self.step_label,
                 step_index=self.step_index,
@@ -173,7 +165,7 @@ class ModelRouter:
         extra_headers: Optional[dict] = None,
     ) -> ModelCallResult:
         """
-        Faz a chamada ao modelo com fallback automático.
+        Faz a chamada ao modelo com fallback automático cross-provider.
 
         Retorna ModelCallResult com o response e metadados da chamada.
         """
@@ -188,10 +180,15 @@ class ModelRouter:
 
         for attempt_idx, mid in enumerate(models_to_try):
             is_fallback = attempt_idx > 0
-            cfg = self._resolve_model_config(mid)
+            
+            try:
+                cfg = self._resolve_model_config(mid)
+            except ValueError as e:
+                logger.warning("Modelo %s não resolvido: %s", mid, e)
+                continue
 
             kwargs: dict = {
-                "model": cfg.model,
+                "model": cfg.model_string,
                 "messages": messages,
                 "temperature": temperature,
             }
@@ -200,7 +197,13 @@ class ModelRouter:
             if cfg.api_base:
                 kwargs["api_base"] = cfg.api_base
             if extra_headers or getattr(cfg, "extra_headers", None):
-                kwargs["extra_headers"] = extra_headers or getattr(cfg, "extra_headers", {})
+                merged_headers = {}
+                if getattr(cfg, "extra_headers", None):
+                    merged_headers.update(cfg.extra_headers)
+                if extra_headers:
+                    merged_headers.update(extra_headers)
+                if merged_headers:
+                    kwargs["extra_headers"] = merged_headers
             if tools:
                 kwargs["tools"] = tools
 
@@ -213,13 +216,14 @@ class ModelRouter:
 
                 if is_fallback:
                     logger.info(
-                        "Fallback OK: %s → %s (latência %dms)",
-                        original_model, mid, elapsed_ms,
+                        "Fallback OK: %s → %s (provider=%s, latência %dms)",
+                        original_model, mid, cfg.provider, elapsed_ms,
                     )
 
                 self._log_attempt(
                     model_requested=original_model,
-                    model_used=cfg.model,
+                    model_used=cfg.model_string,
+                    provider_used=cfg.provider,
                     is_fallback=is_fallback,
                     latency_ms=elapsed_ms,
                     success=True,
@@ -227,7 +231,9 @@ class ModelRouter:
                 )
 
                 result.response = resp
-                result.model_used = cfg.model
+                result.model_used = cfg.model_string
+                result.model_id = cfg.model_id
+                result.provider_used = cfg.provider
                 result.is_fallback = is_fallback
                 result.latency_ms = elapsed_ms
                 result.tokens_prompt = usage["tokens_prompt"]
@@ -243,7 +249,8 @@ class ModelRouter:
                 logger.error("Erro fatal no modelo %s: %s", mid, fatal)
                 self._log_attempt(
                     model_requested=original_model,
-                    model_used=cfg.model,
+                    model_used=cfg.model_string,
+                    provider_used=cfg.provider,
                     is_fallback=is_fallback,
                     latency_ms=elapsed_ms,
                     success=False,
@@ -259,12 +266,13 @@ class ModelRouter:
             except _RETRIABLE_ERRORS as retriable:
                 elapsed_ms = int(time.time() * 1000) - start_ms
                 logger.warning(
-                    "Erro transitório no modelo %s (tentativa %d/%d): %s — tentando fallback...",
-                    mid, attempt_idx + 1, len(models_to_try), retriable,
+                    "Erro transitório no modelo %s (provider=%s, tentativa %d/%d): %s — tentando fallback...",
+                    mid, cfg.provider, attempt_idx + 1, len(models_to_try), retriable,
                 )
                 self._log_attempt(
                     model_requested=original_model,
-                    model_used=cfg.model,
+                    model_used=cfg.model_string,
+                    provider_used=cfg.provider,
                     is_fallback=is_fallback,
                     latency_ms=elapsed_ms,
                     success=False,
@@ -280,7 +288,8 @@ class ModelRouter:
                 logger.error("Erro inesperado no modelo %s: %s", mid, generic)
                 self._log_attempt(
                     model_requested=original_model,
-                    model_used=cfg.model,
+                    model_used=cfg.model_string,
+                    provider_used=cfg.provider,
                     is_fallback=is_fallback,
                     latency_ms=elapsed_ms,
                     success=False,

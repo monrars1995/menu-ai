@@ -37,8 +37,8 @@ Catálogo inicial da aplicação:
 Se for usar Supabase:
 
 ```bash
-SUPABASE_DB_URL=postgresql://postgres:[SENHA]@db.mnqpgpckgqevepgfobzn.supabase.co:5432/postgres
-SUPABASE_URL=https://mnqpgpckgqevepgfobzn.supabase.co
+SUPABASE_DB_URL=postgresql://postgres.[PROJETO]:[SENHA]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require
+SUPABASE_URL=https://[PROJETO].supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 SUPABASE_SECRET_KEY=sb_secret_...
 EMBEDDING_API_KEY=...

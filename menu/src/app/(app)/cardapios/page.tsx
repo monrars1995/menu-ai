@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import type { Cardapio } from "@/lib/types";
@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Table, type Column } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { InlineLoader } from "@/components/ui/loading";
-import { UtensilsCrossed, Search, Filter } from "lucide-react";
+import { UtensilsCrossed, Search, ChefHat, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Todos" },
@@ -22,12 +22,25 @@ const STATUS_OPTIONS = [
   { value: "arquivado", label: "Arquivado" },
 ];
 
+const PAGE_SIZE = 15;
+
 export default function CardapiosPage() {
   const router = useRouter();
   const [cardapios, setCardapios] = useState<Cardapio[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+
+  // Debounce da busca
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Resetar paginação ao buscar/filtrar
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter]);
 
   useEffect(() => { load(); }, []);
 
@@ -37,11 +50,14 @@ export default function CardapiosPage() {
     setLoading(false);
   }
 
-  const filtered = cardapios.filter((c) => {
-    const ms = c.nome.toLowerCase().includes(search.toLowerCase());
+  const filtered = useMemo(() => cardapios.filter((c) => {
+    const ms = c.nome.toLowerCase().includes(debouncedSearch.toLowerCase());
     const mst = !statusFilter || c.status === statusFilter;
     return ms && mst;
-  });
+  }), [cardapios, debouncedSearch, statusFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const columns: Column<Cardapio>[] = [
     { key: "nome", header: "Nome", render: (c) => <span className="font-medium">{c.nome}</span> },
@@ -58,7 +74,7 @@ export default function CardapiosPage() {
 
   return (
     <div>
-      <PageHeader title="Cardápios" description="Visualize e gerencie os cardápios gerados" actions={<Button onClick={() => router.push("/gerar")} size="sm"><UtensilsCrossed size={16} />Gerar Novo</Button>} />
+      <PageHeader title="Cardápios" description={`${filtered.length} cardápio${filtered.length !== 1 ? "s" : ""} encontrado${filtered.length !== 1 ? "s" : ""}`} actions={<Button onClick={() => router.push("/gerar")} size="sm"><UtensilsCrossed size={16} />Gerar Novo</Button>} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-xs">
@@ -76,9 +92,54 @@ export default function CardapiosPage() {
         {loading ? (
           <div className="py-12 text-center"><InlineLoader text="Carregando…" /></div>
         ) : filtered.length === 0 ? (
-          <EmptyState icon={UtensilsCrossed} title="Nenhum cardápio encontrado" description="Gere um cardápio com IA para começar" actionLabel="Gerar Cardápio" actionHref="/gerar" />
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-surface-soft to-hairline/30 text-ink-muted-48">
+              <Sparkles size={28} />
+            </div>
+            <p className="text-sm font-medium text-ink">Nenhum cardápio encontrado</p>
+            <p className="mt-1 max-w-xs text-xs text-ink-muted-48">
+              Gere um cardápio completo com IA, otimizado por custo e nutrição para o seu serviço.
+            </p>
+            <button
+              onClick={() => router.push("/gerar")}
+              className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-signature-coral px-4 py-2 text-sm font-medium text-white transition-all duration-200 hover:opacity-90 hover:shadow-md"
+            >
+              <ChefHat size={16} />
+              Gerar Cardápio
+            </button>
+          </div>
         ) : (
-          <Table columns={columns} data={filtered} keyExtractor={(c) => c.id} onRowClick={(c) => router.push(`/cardapios/${c.id}`)} />
+          <>
+            <Table columns={columns} data={paginated} keyExtractor={(c) => c.id} onRowClick={(c) => router.push(`/cardapios/${c.id}`)} />
+
+            {/* Paginação */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-hairline px-5 py-3">
+                <p className="text-xs text-ink-muted-48">
+                  {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} de {filtered.length}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-md p-1.5 text-ink-muted-48 transition-colors hover:bg-surface-soft hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="min-w-[3rem] text-center text-xs font-medium text-ink">
+                    {page} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="rounded-md p-1.5 text-ink-muted-48 transition-colors hover:bg-surface-soft hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

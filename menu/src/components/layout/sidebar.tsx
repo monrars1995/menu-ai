@@ -55,20 +55,21 @@ export function Sidebar({ id }: { id?: string }) {
               href={href}
               onClick={() => closeNav()}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium",
+                "transition-all duration-200 ease-out",
                 active
                   ? "border-l-2 border-ink bg-primary-subtle text-ink"
-                  : "border-l-2 border-transparent text-ink-muted-48 hover:bg-surface-soft hover:text-ink"
+                  : "border-l-2 border-transparent text-ink-muted-48 hover:bg-surface-soft hover:text-ink hover:translate-x-0.5"
               )}
             >
-              <Icon size={16} strokeWidth={active ? 2 : 1.5} />
+              <Icon size={16} strokeWidth={active ? 2 : 1.5} className="transition-transform duration-200" />
               {label}
             </Link>
           );
         })}
       </nav>
 
-      {/* User */}
+      {/* User + version */}
       <div className="border-t border-hairline p-3">
         {user && (
           <div className="mb-2 flex items-center gap-2 rounded-md px-2 py-1.5">
@@ -87,11 +88,14 @@ export function Sidebar({ id }: { id?: string }) {
             closeNav();
             logout();
           }}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-xs font-medium text-ink-muted-48 transition-colors hover:bg-surface-soft hover:text-ink"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-xs font-medium text-ink-muted-48 transition-all duration-200 hover:bg-surface-soft hover:text-ink"
         >
           <LogOut size={14} />
           Sair
         </button>
+        <div className="mt-2 px-2 text-[10px] text-ink-muted-48/40 select-none">
+          v3.4.1
+        </div>
       </div>
     </aside>
   );

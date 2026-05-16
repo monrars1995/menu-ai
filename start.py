@@ -8,8 +8,6 @@ import subprocess
 from pathlib import Path
 
 BASE = Path(__file__).parent
-DEV_POSTGRES_URL = "postgresql+psycopg2://menuai:menuai123@127.0.0.1:5432/menuai_db"
-SUPABASE_PROJECT_URL = "https://mnqpgpckgqevepgfobzn.supabase.co"
 
 
 def check_env():
@@ -23,10 +21,10 @@ def check_env():
             print("\n⚠️  Arquivo .env criado a partir do exemplo.")
         else:
             env_file.write_text(
-                "OPENROUTER_API_KEY=sua_chave_aqui\n"
+                "OPENROUTER_API_KEY=sk-or-v1-sua_chave_aqui\n"
                 "OPENROUTER_DEFAULT_MODEL=queen-3.6\n"
-                f"DATABASE_URL={DEV_POSTGRES_URL}\n"
-                f"SUPABASE_URL={SUPABASE_PROJECT_URL}\n"
+                "DATABASE_URL=postgresql+psycopg2://menuai:menuai123@127.0.0.1:5432/menuai_db\n"
+                "SUPABASE_URL=https://seu-projeto.supabase.co\n"
             )
 
     content = env_file.read_text()
@@ -77,7 +75,8 @@ def check_database_url():
         sys.exit(1)
     if url.startswith("sqlite"):
         print("\n❌ SQLite não é suportado neste fluxo.")
-        print(f"   Use DATABASE_URL={DEV_POSTGRES_URL} ou SUPABASE_DB_URL do projeto Supabase.")
+        print("   Configure DATABASE_URL (PostgreSQL local) ou SUPABASE_DB_URL (Supabase).")
+        print("   Veja .env.example para exemplos.")
         sys.exit(1)
 
 
