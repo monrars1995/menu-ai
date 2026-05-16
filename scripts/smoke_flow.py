@@ -67,8 +67,14 @@ def _check_info_scope(client, empresa_id: str, token: str | None = None) -> None
 
 
 def main() -> int:
-    os.environ.setdefault("DEBUG", "true")
-    os.environ.setdefault("DEMO_GERAR_SEM_AUTH", "true")
+    full_auth = os.getenv("SMOKE_FULL_AUTH", "").lower() in ("1", "true", "yes")
+    
+    if not full_auth:
+        os.environ["DEBUG"] = "true"
+        os.environ["DEMO_GERAR_SEM_AUTH"] = "true"
+    else:
+        os.environ["ALLOW_OPEN_REGISTRO"] = "true"
+
     if not (os.getenv("OPENROUTER_API_KEY") or "").strip():
         raise RuntimeError("Configure OPENROUTER_API_KEY para executar scripts/smoke_flow.py.")
 
@@ -84,15 +90,16 @@ def main() -> int:
     assert r.status_code == 200, r.text
     assert r.json().get("db_status") == "conectado", r.json()
 
-    _check_info_scope(client, eid)
+    # Se usarmos autenticação completa, não passamos no info sem token
+    if not full_auth:
+        _check_info_scope(client, eid)
 
     r = client.get("/api/llm-models")
     assert r.status_code == 200, r.text
     lm = r.json()
     assert lm.get("models") and len(lm["models"]) >= 1, lm
 
-    if os.getenv("SMOKE_FULL_AUTH", "").lower() in ("1", "true", "yes"):
-        os.environ.setdefault("ALLOW_OPEN_REGISTRO", "true")
+    if full_auth:
         suffix = uuid.uuid4().hex[:8]
         email = f"smoke_{suffix}@example.com"
         password = "smoke12"
