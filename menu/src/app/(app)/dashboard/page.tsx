@@ -15,14 +15,25 @@ import {
 import type { Cardapio } from "@/lib/types";
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [stats, setStats] = useState<{ fichas: number; ingredientes: number }>({ fichas: 0, ingredientes: 0 });
   const [recentCardapios, setRecentCardapios] = useState<Cardapio[]>([]);
+  const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
-    api.info().then((r) => setStats({ fichas: r.total_fichas, ingredientes: r.total_ingredientes })).catch(() => {});
-    api.cardapios.list("per_page=5").then((r) => setRecentCardapios(r.items || [])).catch(() => {});
-  }, []);
+    // Aguarda a autenticação terminar antes de buscar dados
+    if (loading) return;
+
+    setLoadingStats(true);
+    Promise.all([
+      api.info()
+        .then((r) => setStats({ fichas: r.total_fichas ?? 0, ingredientes: r.total_ingredientes ?? 0 }))
+        .catch(() => {}),
+      api.cardapios.list("per_page=5")
+        .then((r) => setRecentCardapios(r.items || []))
+        .catch(() => {}),
+    ]).finally(() => setLoadingStats(false));
+  }, [loading, user]);
 
   const firstName = user?.nome?.split(" ")[0] || user?.email?.split("@")[0] || "Usuário";
 
@@ -58,7 +69,7 @@ export default function DashboardPage() {
             <BookOpen size={20} />
           </div>
           <div>
-            <p className="text-2xl font-medium text-ink">{stats.fichas ?? "—"}</p>
+            <p className="text-2xl font-medium text-ink">{loadingStats ? <span className="inline-block w-6 h-5 rounded bg-surface-soft animate-pulse" /> : (stats.fichas ?? "—")}</p>
             <p className="text-xs text-ink-muted-48">Fichas Técnicas</p>
           </div>
         </div>
@@ -68,7 +79,7 @@ export default function DashboardPage() {
             <Salad size={20} />
           </div>
           <div>
-            <p className="text-2xl font-medium text-ink">{stats.ingredientes ?? "—"}</p>
+            <p className="text-2xl font-medium text-ink">{loadingStats ? <span className="inline-block w-6 h-5 rounded bg-surface-soft animate-pulse" /> : (stats.ingredientes ?? "—")}</p>
             <p className="text-xs text-ink-muted-48">Ingredientes</p>
           </div>
         </div>
