@@ -1,4 +1,4 @@
-# Menu.AI v3.5.8 — Como iniciar
+# Menu.AI v3.5.9 — Como iniciar
 
 ## Stack suportada
 
@@ -30,6 +30,7 @@ GEMINI_API_KEY=SUA_CHAVE_GEMINI
 # opcional
 OPENROUTER_API_KEY=sk-or-v1-SUA_CHAVE_OPENROUTER
 MENUAI_DEFAULT_LLM_MODEL=openai-gpt-5.5
+MENUAI_GENERATION_MODE=fast
 ```
 
 Catálogo inicial da aplicação:

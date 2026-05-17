@@ -2,9 +2,11 @@
 Menu.AI — Router de Cardápios
 Gestão de cardápios gerados + workflow de aprovação.
 """
+import html
 import io
 import math
 import re
+import unicodedata
 from datetime import datetime
 from typing import List, Optional
 
@@ -56,6 +58,7 @@ def listar(
     empresa_id: Optional[str] = Query(None),
     status_filtro: Optional[str] = Query(None, alias="status"),
     contrato_id: Optional[str] = Query(None),
+    job_id: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -70,6 +73,8 @@ def listar(
         q = q.filter(Cardapio.status == status_filtro)
     if contrato_id:
         q = q.filter(Cardapio.contrato_id == contrato_id)
+    if job_id:
+        q = q.filter(Cardapio.job_id == job_id)
 
     total = q.count()
     items = q.order_by(Cardapio.created_at.desc()).offset(skip).limit(limit).all()
@@ -374,6 +379,9 @@ def _tem_refeicoes_estruturadas(cardapio: Cardapio) -> bool:
 
 def _cardapio_para_dataframe(cardapio: Cardapio) -> pd.DataFrame:
     """Converte estrutura do banco para DataFrame (sem enriquecimento de custos)."""
+    if cardapio.resultado_raw and "|" in cardapio.resultado_raw:
+        return _extrair_markdown(cardapio.resultado_raw)
+
     if _tem_refeicoes_estruturadas(cardapio):
         rows = []
         for dia in cardapio.dias:
@@ -390,9 +398,6 @@ def _cardapio_para_dataframe(cardapio: Cardapio) -> pd.DataFrame:
                     "Custo (R$)": round(custo, 2) if custo > 0 else None,
                 })
         return pd.DataFrame(rows) if rows else pd.DataFrame({"Cardápio": [cardapio.nome]})
-
-    if cardapio.resultado_raw and "|" in cardapio.resultado_raw:
-        return _extrair_markdown(cardapio.resultado_raw)
 
     return pd.DataFrame({"Cardápio": [cardapio.nome]})
 
@@ -474,7 +479,7 @@ def _cardapio_export_dataframe(cardapio: Cardapio, db: Session) -> pd.DataFrame:
     """DataFrame para CSV/XLSX: sempre tenta enriquecer custos a partir das fichas."""
     df = _cardapio_para_dataframe(cardapio)
     # Sempre enriquece: preenche custos None/zero com dados reais das fichas técnicas
-    return _enriquecer_custos_dataframe(df, cardapio, db)
+    return _limpar_dataframe_export(_enriquecer_custos_dataframe(df, cardapio, db))
 
 
 def _extrair_markdown(texto: str) -> pd.DataFrame:
@@ -482,16 +487,41 @@ def _extrair_markdown(texto: str) -> pd.DataFrame:
     linhas = [l for l in linhas if not re.match(r"^\|[\s\-:|]+\|$", l)]
     rows, header = [], None
     for l in linhas:
-        cells = [c.strip() for c in l.split("|") if c.strip()]
+        stripped = l.strip().strip("|")
+        cells = [c.strip() for c in stripped.split("|")]
         if not cells:
             continue
         if header is None:
             header = cells
-        elif len(cells) == len(header):
+        elif len(cells) >= len(header):
+            rows.append(cells[: len(header)])
+        elif len(cells) > 1:
+            cells.extend([""] * (len(header) - len(cells)))
             rows.append(cells)
     if not header or not rows:
         return pd.DataFrame({"Cardápio": texto.split("\n")})
     return pd.DataFrame(rows, columns=header)
+
+
+def _limpar_texto_export(valor: object) -> str:
+    text = "" if valor is None else str(valor)
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = text.replace("\r", " ").replace("\n", " ")
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in {"So", "Cs", "Co"})
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _limpar_dataframe_export(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    out = df.copy()
+    out.columns = [_limpar_texto_export(c) for c in out.columns]
+    for col in out.columns:
+        out[col] = out[col].map(_limpar_texto_export)
+    return out
 
 
 def _gerar_txt(cardapio: Cardapio) -> str:
@@ -517,127 +547,123 @@ def _gerar_csv(cardapio: Cardapio, db: Session, nome_arquivo: str) -> Response:
 
 
 def _gerar_pdf(cardapio: Cardapio, db: Session) -> io.BytesIO:
-    """Gera PDF formatado com dias, refeições, pratos e custos."""
+    """Gera PDF operacional usando a mesma matriz base do CSV/XLSX."""
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import (
         Paragraph, Spacer, Table, TableStyle, SimpleDocTemplate,
-        PageBreak, KeepTogether,
     )
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.5*cm, rightMargin=1.5*cm)
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=landscape(A4),
+        leftMargin=0.8 * cm,
+        rightMargin=0.8 * cm,
+        topMargin=0.8 * cm,
+        bottomMargin=0.8 * cm,
+    )
     styles = getSampleStyleSheet()
 
-    # Custom styles
-    title_style = ParagraphStyle("Title2", parent=styles["Title"], fontSize=18, textColor=colors.HexColor("#1d1d1f"), spaceAfter=4)
-    subtitle_style = ParagraphStyle("Subtitle2", parent=styles["Normal"], fontSize=10, textColor=colors.HexColor("#6e6e73"), spaceAfter=12)
-    section_style = ParagraphStyle("Section", parent=styles["Heading2"], fontSize=12, textColor=colors.HexColor("#0066cc"), spaceBefore=10, spaceAfter=6)
-    body_style = ParagraphStyle("Body2", parent=styles["Normal"], fontSize=9, leading=12)
+    title_style = ParagraphStyle(
+        "MenuAITitle",
+        parent=styles["Title"],
+        fontSize=15,
+        leading=18,
+        textColor=colors.HexColor("#111827"),
+        spaceAfter=2,
+    )
+    subtitle_style = ParagraphStyle(
+        "MenuAISubtitle",
+        parent=styles["Normal"],
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#6b7280"),
+        spaceAfter=8,
+    )
+    header_style = ParagraphStyle(
+        "MenuAITableHeader",
+        parent=styles["Normal"],
+        fontName="Helvetica-Bold",
+        fontSize=5.8,
+        leading=6.6,
+        textColor=colors.white,
+        alignment=1,
+    )
+    cell_style = ParagraphStyle(
+        "MenuAITableCell",
+        parent=styles["Normal"],
+        fontSize=5.6,
+        leading=6.5,
+        wordWrap="CJK",
+    )
 
-    story = []
+    def _p(value: object, style: ParagraphStyle = cell_style) -> Paragraph:
+        return Paragraph(html.escape(_limpar_texto_export(value) or "-"), style)
 
-    # Title
-    story.append(Paragraph(cardapio.nome, title_style))
-    story.append(Paragraph(f"Gerado em {datetime.utcnow().strftime('%d/%m/%Y %H:%M')}", subtitle_style))
-    story.append(Spacer(1, 8))
+    df = _cardapio_export_dataframe(cardapio, db)
+    if df.empty:
+        df = pd.DataFrame({"Cardápio": [cardapio.nome]})
 
-    # Table data
-    headers = ["Dia", "Refeição", "Categoria", "Prato", "Custo (R$)"]
-    col_widths = [1.5*cm, 3.5*cm, 3*cm, 7*cm, 2.5*cm]
+    headers = [_limpar_texto_export(c) for c in df.columns]
+    rows_data = [[_p(h, header_style) for h in headers]]
+    for _, row in df.iterrows():
+        rows_data.append([_p(row.get(col, "")) for col in df.columns])
 
-    rows_data = [headers]
-    custo_total_geral = 0.0
+    available_width = doc.width
+    weights = []
+    for h in headers:
+        key = h.lower()
+        if key in {"dia"}:
+            weights.append(0.7)
+        elif "refei" in key:
+            weights.append(1.2)
+        elif "tema" in key:
+            weights.append(1.4)
+        elif "custo" in key or "codigo" in key or "código" in key:
+            weights.append(1.1)
+        else:
+            weights.append(2.1)
+    total_weight = sum(weights) or 1
+    col_widths = [available_width * (w / total_weight) for w in weights]
 
-    if cardapio.dias:
-        for dia in cardapio.dias:
-            for ref in dia.refeicoes:
-                rows_data.append([
-                    str(dia.numero_dia),
-                    ref.tipo_refeicao.replace("_", " ").title(),
-                    ref.categoria or "",
-                    ref.nome_prato,
-                    f"R$ {ref.custo_porcao:.2f}" if ref.custo_porcao else "—",
-                ])
-            custo_dia = dia.custo_total or sum(r.custo_porcao or 0 for r in dia.refeicoes)
-            custo_total_geral += custo_dia
-            # Subtotal row
-            rows_data.append([
-                "", "", "", f"Subtotal Dia {dia.numero_dia}",
-                f"R$ {custo_dia:.2f}",
-            ])
-
-    # Total row
-    rows_data.append(["", "", "", "TOTAL GERAL", f"R$ {custo_total_geral:.2f}"])
-
-    # Table styling
-    table = Table(rows_data, colWidths=col_widths, repeatRows=1)
-    table_style_cmds = [
-        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0066cc")),
-        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ("ALIGN", (4, 0), (4, -1), "RIGHT"),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -2), 0.5, colors.HexColor("#d0d0d0")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f5f5f7")]),
-        ("FONT", (0, 1), (-1, -2), "Helvetica", 8),
-        # Total row
-        ("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 9),
-        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#e8e8ed")),
-        # Subtotal rows
-        ("FONT", (0, -3), (-1, -2), "Helvetica-Bold", 8),
-        ("TEXTCOLOR", (0, -3), (-1, -2), colors.HexColor("#6e6e73")),
+    story = [
+        Paragraph(html.escape(_limpar_texto_export(cardapio.nome)), title_style),
+        Paragraph(
+            html.escape(
+                f"Matriz operacional exportada em {datetime.utcnow().strftime('%d/%m/%Y %H:%M')} UTC"
+            ),
+            subtitle_style,
+        ),
+        Spacer(1, 4),
     ]
-    table.setStyle(TableStyle(table_style_cmds))
+
+    table = Table(rows_data, colWidths=col_widths, repeatRows=1, splitByRow=1)
+    table.setStyle(TableStyle([
+        ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 5.8),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#111827")),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d1d5db")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9fafb")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2.2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2.2),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.4),
+    ]))
     story.append(table)
 
-    # Shopping list summary
-    if cardapio.dias:
-        story.append(PageBreak())
-        story.append(Paragraph("Lista de Compras", section_style))
+    def _footer(canvas, document):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#6b7280"))
+        canvas.drawRightString(document.pagesize[0] - document.rightMargin, 0.35 * cm, f"Página {document.page}")
+        canvas.restoreState()
 
-        pratos = set()
-        for dia in cardapio.dias:
-            for ref in dia.refeicoes:
-                if ref.codigo_prato:
-                    pratos.add(ref.codigo_prato)
-
-        from collections import defaultdict
-        ing_map: dict[str, dict] = defaultdict(lambda: {"qtd": 0.0, "custo": 0.0})
-        if pratos:
-            fichas = db.query(FichaTecnica).filter(
-                FichaTecnica.empresa_id == cardapio.empresa_id,
-                FichaTecnica.codigo.in_(list(pratos)),
-            ).all()
-            for ficha in fichas:
-                for item in ficha.ingredientes_ficha:
-                    nome = item.ingrediente.nome if item.ingrediente else "Desconhecido"
-                    ing_map[nome]["qtd"] += item.quantidade_bruta_g or 0
-                    ing_map[nome]["custo"] += item.custo_calculado or 0
-
-            shop_headers = ["Ingrediente", "Qtd Total (g)", "Custo Est. (R$)"]
-            shop_rows = [shop_headers]
-            for nome in sorted(ing_map):
-                d = ing_map[nome]
-                shop_rows.append([nome, f"{d['qtd']:.1f}", f"R$ {d['custo']:.2f}"])
-
-            shop_table = Table(shop_rows, colWidths=[8*cm, 4*cm, 3.5*cm], repeatRows=1)
-            shop_table.setStyle(TableStyle([
-                ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0066cc")),
-                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d0d0d0")),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f5f7")]),
-                ("FONT", (0, 1), (-1, -1), "Helvetica", 8),
-            ]))
-            story.append(shop_table)
-
-    doc.build(story)
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return buf
 
 

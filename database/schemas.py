@@ -439,6 +439,8 @@ LlmModelId = Literal[
     "kimi-k2.5",
 ]
 
+GenerationMode = Literal["fast", "full"]
+
 
 class GerarCardapioRequest(BaseModel):
     """Request para geração via agentes IA."""
@@ -463,6 +465,10 @@ class GerarCardapioRequest(BaseModel):
     contrato_analise_confirmada: bool = Field(
         default=False,
         description="True quando a análise do contrato já foi revisada/confirmada antes de iniciar a geração.",
+    )
+    generation_mode: Optional[GenerationMode] = Field(
+        default=None,
+        description="Modo de geração: fast (padrão) ou full (pipeline completo legado).",
     )
 
 

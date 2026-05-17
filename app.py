@@ -1,6 +1,6 @@
 
 """
-Menu.AI — Backend FastAPI v3.5.8
+Menu.AI — Backend FastAPI v3.5.9
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
@@ -28,7 +28,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.5.8"
+APP_VERSION = "3.5.9"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -500,6 +500,7 @@ async def gerar_cardapio(
         body_resolved.contrato_id,
         body_resolved.nome_cardapio,
         body_resolved.llm_model,
+        body_resolved.generation_mode,
         upload_dir=UPLOAD_DIR,
         db_ok=_db_ok,
         contrato_analise_confirmada=body_resolved.contrato_analise_confirmada,

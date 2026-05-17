@@ -1,0 +1,640 @@
+"""Geração rápida de cardápios com uma chamada LLM e validação determinística."""
+from __future__ import annotations
+
+import json
+import re
+import time
+import unicodedata
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Callable, Optional
+
+from sqlalchemy.orm import Session
+
+
+OUTPUT_COLUMNS = [
+    "Dia",
+    "Refeição",
+    "Prato Proteico Principal",
+    "Opção Proteica 2",
+    "Opção Proteica 3",
+    "Guarnição 1",
+    "Guarnição 2",
+    "Salada Crua",
+    "Salada Cozida",
+    "Salada Folhosa/Elaborada",
+    "Sobremesa",
+    "Tema Especial",
+]
+
+SLOT_BUCKETS = {
+    "Prato Proteico Principal": "proteicos",
+    "Opção Proteica 2": "proteicos",
+    "Opção Proteica 3": "proteicos",
+    "Guarnição 1": "guarnicoes",
+    "Guarnição 2": "guarnicoes",
+    "Salada Crua": "saladas_cruas",
+    "Salada Cozida": "saladas_cozidas",
+    "Salada Folhosa/Elaborada": "saladas_elaboradas",
+    "Sobremesa": "sobremesas",
+}
+
+REFEICAO_LABELS = {
+    "cafe_manha": "Café da manhã",
+    "lanche_manha": "Lanche da manhã",
+    "almoco": "Almoço",
+    "lanche_tarde": "Lanche da tarde",
+    "jantar": "Jantar",
+    "ceia": "Ceia",
+}
+
+SPECIAL_THEMES = [
+    "-",
+    "Bella Massa",
+    "-",
+    "-",
+    "Regional",
+    "Fast Food",
+    "-",
+    "-",
+    "Oriental",
+]
+
+
+@dataclass(frozen=True)
+class Candidate:
+    id: str
+    codigo: str
+    nome: str
+    categoria: str
+    custo: float
+    vegetariana: bool
+    vegana: bool
+    gluten: bool
+    lactose: bool
+
+
+def _norm(text: Any) -> str:
+    raw = unicodedata.normalize("NFKD", str(text or ""))
+    ascii_text = raw.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", " ", ascii_text.lower()).strip()
+
+
+def _clean_cell(value: Any) -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = text.replace("\n", " ").replace("\r", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or "-"
+
+
+def _bucket_for(category: str, name: str) -> str:
+    cat = _norm(category)
+    nome = _norm(name)
+    if "sobremesa" in cat or "fruta" in cat or "doce" in cat:
+        return "sobremesas"
+    if "salada" in cat:
+        if "coz" in cat or "cozid" in nome or "beterraba" in nome or "abobora" in nome or "chuchu" in nome:
+            return "saladas_cozidas"
+        if "elabor" in cat or "folh" in cat or "grao" in nome or "macarronese" in nome or "caprese" in nome:
+            return "saladas_elaboradas"
+        return "saladas_cruas"
+    if (
+        "guarn" in cat
+        or "arroz" in cat
+        or "feij" in cat
+        or "acompanhamento" in cat
+        or "massa" in cat
+    ):
+        return "guarnicoes"
+    if (
+        "prot" in cat
+        or "carne" in cat
+        or "frango" in cat
+        or "peixe" in cat
+        or "ovo" in cat
+        or "suino" in cat
+    ):
+        return "proteicos"
+    return "outros"
+
+
+def _catalog_snapshot(db: Session, empresa_id: str, max_per_bucket: int = 80) -> dict[str, list[Candidate]]:
+    from database.models import FichaTecnica
+
+    buckets: dict[str, list[Candidate]] = {
+        "proteicos": [],
+        "guarnicoes": [],
+        "saladas_cruas": [],
+        "saladas_cozidas": [],
+        "saladas_elaboradas": [],
+        "sobremesas": [],
+        "outros": [],
+    }
+    rows = (
+        db.query(FichaTecnica)
+        .filter(FichaTecnica.empresa_id == empresa_id, FichaTecnica.ativo == True)
+        .order_by(FichaTecnica.categoria.asc(), FichaTecnica.custo_porcao.asc(), FichaTecnica.nome.asc())
+        .all()
+    )
+    for f in rows:
+        bucket = _bucket_for(f.categoria, f.nome)
+        if len(buckets[bucket]) >= max_per_bucket:
+            continue
+        buckets[bucket].append(
+            Candidate(
+                id=str(f.id),
+                codigo=f.codigo or "",
+                nome=f.nome or "",
+                categoria=f.categoria or "",
+                custo=float(f.custo_porcao or 0),
+                vegetariana=bool(f.vegetariana),
+                vegana=bool(f.vegana),
+                gluten=bool(f.contem_gluten),
+                lactose=bool(f.contem_lactose),
+            )
+        )
+    return buckets
+
+
+def _candidate_for(bucket: list[Candidate], index: int) -> Optional[Candidate]:
+    if not bucket:
+        return None
+    return bucket[index % len(bucket)]
+
+
+def _bucket_candidates(catalog: dict[str, list[Candidate]], bucket_name: str) -> list[Candidate]:
+    items = catalog.get(bucket_name, [])
+    if items:
+        return items
+    if bucket_name.startswith("saladas_"):
+        return (
+            catalog.get("saladas_cruas", [])
+            + catalog.get("saladas_cozidas", [])
+            + catalog.get("saladas_elaboradas", [])
+        )
+    return items
+
+
+def _catalog_for_prompt(catalog: dict[str, list[Candidate]], limit: int = 45) -> dict[str, list[dict[str, Any]]]:
+    prompt_catalog: dict[str, list[dict[str, Any]]] = {}
+    for bucket, items in catalog.items():
+        if bucket == "outros":
+            continue
+        prompt_catalog[bucket] = [
+            {
+                "codigo": c.codigo,
+                "nome": c.nome,
+                "categoria": c.categoria,
+                "custo": round(c.custo, 2),
+                "vegetariana": c.vegetariana,
+                "vegana": c.vegana,
+                "gluten": c.gluten,
+                "lactose": c.lactose,
+            }
+            for c in items[:limit]
+        ]
+    return prompt_catalog
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    content = (text or "").strip()
+    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", content, re.IGNORECASE)
+    if fenced:
+        content = fenced.group(1).strip()
+    if not content.startswith("{"):
+        start = content.find("{")
+        end = content.rfind("}")
+        if start >= 0 and end > start:
+            content = content[start : end + 1]
+    return json.loads(content)
+
+
+def _message_content(response: Any) -> str:
+    if not getattr(response, "choices", None):
+        return ""
+    msg = response.choices[0].message
+    return getattr(msg, "content", None) or (msg.get("content") if isinstance(msg, dict) else "") or ""
+
+
+def _llm_generate(
+    *,
+    job_id: str,
+    empresa_id: str,
+    llm_model: Optional[str],
+    dias: int,
+    refeicoes: list[str],
+    regras_contrato: dict[str, Any],
+    restricoes_usuario: str,
+    target_custo_total: float,
+    target_custo_proteico: float,
+    catalog: dict[str, list[Candidate]],
+    repair_context: Optional[str] = None,
+) -> tuple[list[dict[str, Any]], str]:
+    from pipeline.model_router import ModelRouter
+
+    prompt_catalog = _catalog_for_prompt(catalog)
+    system = (
+        "Você é nutricionista de refeições coletivas. Gere cardápio operacional em JSON puro. "
+        "Use somente pratos existentes no catálogo. Não inclua markdown fora do JSON."
+    )
+    repair_block = f"\n\nCORRIJA A SAÍDA ANTERIOR:\n{repair_context}" if repair_context else ""
+    user = (
+        f"Gere um cardápio de {dias} dias para as refeições: "
+        f"{', '.join(REFEICAO_LABELS.get(r, r) for r in refeicoes)}.\n"
+        f"Custo alvo total por refeição: R$ {target_custo_total:.2f}. "
+        f"Custo alvo proteico: R$ {target_custo_proteico:.2f}.\n"
+        f"Regras do contrato:\n{json.dumps(regras_contrato or {}, ensure_ascii=False)[:5000]}\n"
+        f"Restrições adicionais:\n{restricoes_usuario or '-'}\n"
+        f"Catálogo permitido:\n{json.dumps(prompt_catalog, ensure_ascii=False)[:28000]}\n\n"
+        "Retorne exatamente este JSON:\n"
+        "{\n"
+        '  "dias": [\n'
+        "    {\n"
+        '      "Dia": 1,\n'
+        '      "Refeição": "Almoço",\n'
+        '      "Prato Proteico Principal": "nome do prato",\n'
+        '      "Opção Proteica 2": "nome do prato",\n'
+        '      "Opção Proteica 3": "nome do prato",\n'
+        '      "Guarnição 1": "nome do prato",\n'
+        '      "Guarnição 2": "nome do prato",\n'
+        '      "Salada Crua": "nome do prato",\n'
+        '      "Salada Cozida": "nome do prato",\n'
+        '      "Salada Folhosa/Elaborada": "nome do prato",\n'
+        '      "Sobremesa": "nome do prato ou -",\n'
+        '      "Tema Especial": "tema ou -"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "Regras: gere todos os dias; evite repetir prato proteico principal em dias consecutivos; "
+        "mantenha opção vegetariana quando contrato exigir; use '-' só se não houver opção no catálogo."
+        f"{repair_block}"
+    )
+    router = ModelRouter(
+        model_id=llm_model,
+        job_id=job_id,
+        empresa_id=empresa_id,
+        step_label="Geração rápida de cardápio",
+        step_index=10 if not repair_context else 11,
+    )
+    result = router.call(messages=[{"role": "system", "content": system}, {"role": "user", "content": user}], temperature=0.25)
+    if not result.success:
+        raise RuntimeError(result.error or "Falha ao chamar LLM no modo rápido.")
+    content = _message_content(result.response)
+    payload = _extract_json(content)
+    rows = payload.get("dias") or payload.get("cardapio") or []
+    if not isinstance(rows, list):
+        raise ValueError("Resposta LLM sem lista 'dias'.")
+    return rows, content
+
+
+def _deterministic_rows(catalog: dict[str, list[Candidate]], dias: int, refeicoes: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for dia in range(1, dias + 1):
+        for meal_idx, ref in enumerate(refeicoes):
+            idx = (dia - 1) + meal_idx
+            row: dict[str, Any] = {
+                "Dia": dia,
+                "Refeição": REFEICAO_LABELS.get(ref, ref.title()),
+                "Tema Especial": SPECIAL_THEMES[(dia - 1) % len(SPECIAL_THEMES)],
+            }
+            for col, bucket_name in SLOT_BUCKETS.items():
+                bucket = _bucket_candidates(catalog, bucket_name)
+                offset = idx
+                if col == "Opção Proteica 2":
+                    offset = idx + max(1, len(bucket) // 3)
+                elif col == "Opção Proteica 3":
+                    offset = idx + max(2, (len(bucket) * 2) // 3)
+                elif col.endswith("2"):
+                    offset = idx + 1
+                cand = _candidate_for(bucket, offset)
+                row[col] = cand.nome if cand else "-"
+            rows.append(row)
+    return rows
+
+
+def _validate_and_normalize(
+    rows: list[dict[str, Any]],
+    *,
+    dias: int,
+    refeicoes: list[str],
+    catalog: dict[str, list[Candidate]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    warnings: list[str] = []
+    expected_count = dias * max(1, len(refeicoes))
+    allowed_by_slot = {
+        col: {_norm(candidate.nome) for candidate in _bucket_candidates(catalog, bucket)}
+        for col, bucket in SLOT_BUCKETS.items()
+    }
+    by_key: dict[tuple[int, str], dict[str, Any]] = {}
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            dia = int(str(raw.get("Dia") or raw.get("dia") or "").replace("*", "").strip())
+        except ValueError:
+            continue
+        refeicao = _clean_cell(raw.get("Refeição") or raw.get("refeicao") or REFEICAO_LABELS.get(refeicoes[0], "Almoço"))
+        by_key[(dia, _norm(refeicao))] = raw
+
+    fallback = _deterministic_rows(catalog, dias, refeicoes)
+    fallback_by_key = {(int(r["Dia"]), _norm(r["Refeição"])): r for r in fallback}
+    normalized: list[dict[str, Any]] = []
+    for dia in range(1, dias + 1):
+        for ref in refeicoes:
+            refeicao_label = REFEICAO_LABELS.get(ref, ref.title())
+            key = (dia, _norm(refeicao_label))
+            raw = by_key.get(key)
+            if raw is None and len(refeicoes) == 1:
+                raw = next((v for (d, _), v in by_key.items() if d == dia), None)
+            if raw is None:
+                warnings.append(f"Dia {dia}/{refeicao_label} ausente; preenchido por rotação determinística.")
+                raw = fallback_by_key[key]
+            row = {}
+            fallback_row = fallback_by_key[key]
+            for col in OUTPUT_COLUMNS:
+                value = raw.get(col)
+                if value in (None, ""):
+                    value = fallback_row.get(col, "-")
+                    if col not in {"Tema Especial"}:
+                        warnings.append(f"Campo {col} ausente no dia {dia}; preenchido automaticamente.")
+                value = _clean_cell(value)
+                if col in SLOT_BUCKETS and value != "-" and _norm(value) not in allowed_by_slot.get(col, set()):
+                    fallback_value = fallback_row.get(col, "-")
+                    warnings.append(
+                        f"Campo {col} no dia {dia} não existe no catálogo; substituído por ficha ativa."
+                    )
+                    value = fallback_value
+                row[col] = _clean_cell(value)
+            row["Dia"] = str(dia)
+            row["Refeição"] = refeicao_label
+            normalized.append(row)
+
+    if len(normalized) != expected_count:
+        warnings.append(f"Quantidade normalizada ({len(normalized)}) diferente da esperada ({expected_count}).")
+    for i in range(1, len(normalized)):
+        prev = normalized[i - 1].get("Prato Proteico Principal")
+        cur = normalized[i].get("Prato Proteico Principal")
+        if prev and cur and _norm(prev) == _norm(cur):
+            replacement = next(
+                (candidate.nome for candidate in _bucket_candidates(catalog, "proteicos") if _norm(candidate.nome) != _norm(prev)),
+                None,
+            )
+            if replacement:
+                normalized[i]["Prato Proteico Principal"] = replacement
+                warnings.append(f"Proteico principal repetido entre linhas {i} e {i + 1}; substituído automaticamente.")
+            else:
+                warnings.append(f"Proteico principal repetido entre linhas {i} e {i + 1}.")
+    return normalized, warnings
+
+
+def _core_catalog_errors(catalog: dict[str, list[Candidate]]) -> list[str]:
+    errors = []
+    if not catalog.get("proteicos"):
+        errors.append("Nenhuma ficha proteica ativa encontrada para a empresa.")
+    if not catalog.get("guarnicoes"):
+        errors.append("Nenhuma ficha de guarnição/acompanhamento ativa encontrada para a empresa.")
+    if not (catalog.get("saladas_cruas") or catalog.get("saladas_cozidas") or catalog.get("saladas_elaboradas")):
+        errors.append("Nenhuma ficha de salada ativa encontrada para a empresa.")
+    return errors
+
+
+def _markdown_table(rows: list[dict[str, Any]]) -> str:
+    header = "| " + " | ".join(OUTPUT_COLUMNS) + " |"
+    sep = "| " + " | ".join(["---"] * len(OUTPUT_COLUMNS)) + " |"
+    lines = [header, sep]
+    for row in rows:
+        cells = [str(row.get(col, "-")).replace("|", "/") for col in OUTPUT_COLUMNS]
+        lines.append("| " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def _candidate_lookup(catalog: dict[str, list[Candidate]]) -> dict[str, Candidate]:
+    lookup: dict[str, Candidate] = {}
+    for items in catalog.values():
+        for item in items:
+            lookup.setdefault(_norm(item.nome), item)
+            if item.codigo:
+                lookup.setdefault(_norm(item.codigo), item)
+    return lookup
+
+
+def _tipo_refeicao(label: str) -> str:
+    norm = _norm(label)
+    for key, human in REFEICAO_LABELS.items():
+        if _norm(human) == norm or _norm(key) == norm:
+            return key
+    return "almoco"
+
+
+def _persist_cardapio(
+    db: Session,
+    *,
+    job_id: str,
+    empresa_id: str,
+    contrato_id: Optional[str],
+    nome_cardapio: Optional[str],
+    dias: int,
+    target_custo_total: float,
+    target_custo_proteico: float,
+    llm_model: Optional[str],
+    markdown: str,
+    rows: list[dict[str, Any]],
+    catalog: dict[str, list[Candidate]],
+    warnings: list[str],
+    duration_seconds: float,
+) -> str:
+    from database.models import Cardapio, CardapioDia, CardapioRefeicao, JobAgente
+    from services.knowledge_base import sync_cardapio_document
+    from services.knowledge_hooks import sync_knowledge_safe
+
+    lookup = _candidate_lookup(catalog)
+    cardapio = Cardapio(
+        empresa_id=empresa_id,
+        contrato_id=contrato_id,
+        nome=nome_cardapio or f"Cardápio {dias} dias — {job_id}",
+        status="rascunho",
+        num_dias=dias,
+        resultado_raw=markdown,
+        job_id=job_id,
+        parametros_json={
+            "dias": dias,
+            "target_custo_total": target_custo_total,
+            "target_custo_proteico": target_custo_proteico,
+            "llm_model": llm_model,
+            "generation_mode": "fast",
+            "duration_seconds": round(duration_seconds, 2),
+            "validation_warnings": warnings[:100],
+        },
+        updated_at=datetime.utcnow(),
+    )
+    db.add(cardapio)
+    db.flush()
+
+    rows_by_day: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        rows_by_day.setdefault(int(row["Dia"]), []).append(row)
+
+    total_cost = 0.0
+    for dia_num in range(1, dias + 1):
+        day_rows = rows_by_day.get(dia_num, [])
+        dia_db = CardapioDia(cardapio_id=cardapio.id, numero_dia=dia_num, custo_total=0.0)
+        db.add(dia_db)
+        db.flush()
+        day_cost = 0.0
+        for row in day_rows:
+            refeicao = _tipo_refeicao(row.get("Refeição", "Almoço"))
+            for ordem, col in enumerate(OUTPUT_COLUMNS[2:-1], start=1):
+                nome = _clean_cell(row.get(col))
+                if nome == "-":
+                    continue
+                cand = lookup.get(_norm(nome))
+                custo = float(cand.custo) if cand else 0.0
+                day_cost += custo
+                db.add(
+                    CardapioRefeicao(
+                        dia_id=dia_db.id,
+                        ficha_tecnica_id=cand.id if cand else None,
+                        tipo_refeicao=refeicao,
+                        categoria=col,
+                        codigo_prato=cand.codigo if cand else None,
+                        nome_prato=nome,
+                        custo_porcao=round(custo, 2),
+                        observacoes=None,
+                        ordem=ordem,
+                    )
+                )
+        dia_db.custo_total = round(day_cost, 2)
+        total_cost += day_cost
+
+    cardapio.custo_medio_dia = round(total_cost / max(dias, 1), 2)
+    job_db = db.query(JobAgente).filter(JobAgente.job_id == job_id).first()
+    if job_db:
+        job_db.status = "concluido"
+        job_db.progresso = 100
+        job_db.resultado_raw = markdown
+        job_db.cardapio_id = cardapio.id
+        job_db.concluido_em = datetime.utcnow()
+        job_db.updated_at = datetime.utcnow()
+
+    sync_knowledge_safe(sync_cardapio_document, db, cardapio)
+    db.commit()
+    return str(cardapio.id)
+
+
+def run_fast_generation(
+    *,
+    job_id: str,
+    dias: int,
+    target_custo_total: float,
+    target_custo_proteico: float,
+    restricoes_usuario: str,
+    refeicoes: Optional[list[str]],
+    empresa_id: Optional[str],
+    contrato_id: Optional[str],
+    nome_cardapio: Optional[str],
+    llm_model: Optional[str],
+    regras_contrato: dict[str, Any],
+    started_ts: float,
+    progress: Callable[[int, str, str], None],
+) -> dict[str, Any]:
+    if not empresa_id:
+        raise ValueError("empresa_id é obrigatório para geração rápida com fichas do banco.")
+
+    from database.connection import SessionLocal
+
+    db = SessionLocal()
+    try:
+        refeicoes_norm = refeicoes or ["almoco"]
+        progress(45, "📚 Montando catálogo rápido de fichas técnicas...", "Gestor de Fichas Técnicas")
+        catalog = _catalog_snapshot(db, empresa_id)
+        errors = _core_catalog_errors(catalog)
+        if errors:
+            raise ValueError(" ".join(errors))
+
+        progress(58, "🧠 Gerando matriz operacional do cardápio...", "Nutricionista")
+        warnings: list[str] = []
+        try:
+            rows, raw_response = _llm_generate(
+                job_id=job_id,
+                empresa_id=empresa_id,
+                llm_model=llm_model,
+                dias=dias,
+                refeicoes=refeicoes_norm,
+                regras_contrato=regras_contrato or {},
+                restricoes_usuario=restricoes_usuario,
+                target_custo_total=target_custo_total,
+                target_custo_proteico=target_custo_proteico,
+                catalog=catalog,
+            )
+        except Exception as exc:
+            warnings.append(f"Geração LLM inicial falhou; usada rotação determinística. Erro: {exc}")
+            rows = _deterministic_rows(catalog, dias, refeicoes_norm)
+            raw_response = ""
+
+        progress(76, "🔎 Validando dias, colunas e repetições...", "Analista Nutricional")
+        normalized, validation_warnings = _validate_and_normalize(
+            rows,
+            dias=dias,
+            refeicoes=refeicoes_norm,
+            catalog=catalog,
+        )
+        warnings.extend(validation_warnings)
+
+        if validation_warnings and raw_response:
+            progress(82, "🛠️ Ajustando automaticamente inconsistências do cardápio...", "Nutricionista")
+            try:
+                repaired, _ = _llm_generate(
+                    job_id=job_id,
+                    empresa_id=empresa_id,
+                    llm_model=llm_model,
+                    dias=dias,
+                    refeicoes=refeicoes_norm,
+                    regras_contrato=regras_contrato or {},
+                    restricoes_usuario=restricoes_usuario,
+                    target_custo_total=target_custo_total,
+                    target_custo_proteico=target_custo_proteico,
+                    catalog=catalog,
+                    repair_context=json.dumps(
+                        {"warnings": validation_warnings[:30], "saida_anterior": normalized[: max(dias, 30)]},
+                        ensure_ascii=False,
+                    )[:12000],
+                )
+                normalized, repair_warnings = _validate_and_normalize(
+                    repaired,
+                    dias=dias,
+                    refeicoes=refeicoes_norm,
+                    catalog=catalog,
+                )
+                warnings.extend(repair_warnings)
+            except Exception as exc:
+                warnings.append(f"Reparo LLM falhou; mantida versão normalizada. Erro: {exc}")
+
+        progress(90, "💾 Persistindo cardápio estruturado...", "Sistema")
+        markdown = _markdown_table(normalized)
+        duration_seconds = time.time() - started_ts
+        cardapio_id = _persist_cardapio(
+            db,
+            job_id=job_id,
+            empresa_id=empresa_id,
+            contrato_id=contrato_id,
+            nome_cardapio=nome_cardapio,
+            dias=dias,
+            target_custo_total=target_custo_total,
+            target_custo_proteico=target_custo_proteico,
+            llm_model=llm_model,
+            markdown=markdown,
+            rows=normalized,
+            catalog=catalog,
+            warnings=warnings,
+            duration_seconds=duration_seconds,
+        )
+        return {
+            "markdown": markdown,
+            "cardapio_id": cardapio_id,
+            "warnings": warnings,
+            "duration_seconds": round(duration_seconds, 2),
+        }
+    finally:
+        db.close()

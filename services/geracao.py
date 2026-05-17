@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import traceback
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -92,11 +94,13 @@ def executar_crew(
     contrato_id: Optional[str],
     nome_cardapio: Optional[str],
     llm_model: Optional[str],
+    generation_mode: Optional[str],
     *,
     upload_dir: Path,
     db_ok: bool,
     contrato_analise_confirmada: bool = False,
 ):
+    started_ts = time.time()
     q = job_state.job_queues[job_id]
     AGENTES = [
         "Coordenador",
@@ -178,6 +182,7 @@ def executar_crew(
                 "target_custo_proteico": target_custo_proteico,
                 "refeicoes": refeicoes,
                 "llm_model": llm_model,
+                "generation_mode": generation_mode or os.getenv("MENUAI_GENERATION_MODE", "fast"),
             },
         )
 
@@ -305,6 +310,41 @@ def executar_crew(
 
             progress(40, "🏁 Confirmação recebida! Continuando geração...", "Sistema")
 
+        mode = (generation_mode or os.getenv("MENUAI_GENERATION_MODE", "fast") or "fast").strip().lower()
+        if mode not in {"fast", "full"}:
+            mode = "fast"
+
+        if mode == "fast":
+            from services.fast_generation import run_fast_generation
+
+            fast_result = run_fast_generation(
+                job_id=job_id,
+                dias=dias,
+                target_custo_total=target_custo_total,
+                target_custo_proteico=target_custo_proteico,
+                restricoes_usuario=restricoes_usuario,
+                refeicoes=refeicoes,
+                empresa_id=empresa_id,
+                contrato_id=contrato_id,
+                nome_cardapio=nome_cardapio,
+                llm_model=llm_model,
+                regras_contrato=crew.ctx.regras_contrato or contrato_regras_db or {},
+                started_ts=started_ts,
+                progress=progress,
+            )
+            result = fast_result["markdown"]
+            job_state.jobs[job_id]["status"] = "concluido"
+            job_state.jobs[job_id]["result"] = result
+            job_state.jobs[job_id]["progress"] = 100
+            emit(
+                "log",
+                agent="Sistema",
+                message="🎉 Cardápio gerado com sucesso no modo rápido.",
+                progress=100,
+            )
+            emit("done", result=result, progress=100, cardapio_id=fast_result.get("cardapio_id"))
+            return
+
         result = str(crew.run())
 
         # Persistir regras extraídas do contrato no DB
@@ -358,6 +398,8 @@ def executar_crew(
                             "target_custo_total": target_custo_total,
                             "target_custo_proteico": target_custo_proteico,
                             "llm_model": llm_model,
+                            "generation_mode": "full",
+                            "duration_seconds": round(time.time() - started_ts, 2),
                         },
                         updated_at=datetime.utcnow(),
                     )

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: goldneuronio/menuai-app:v3.5.8
+    image: goldneuronio/menuai-app:v3.5.9
     environment:
       SUPABASE_DB_URL: ${SUPABASE_DB_URL}
       DATABASE_URL: ${SUPABASE_DB_URL}
@@ -19,6 +19,7 @@ services:
       GOOGLE_API_KEY: ${GOOGLE_API_KEY}
       MENUAI_DEFAULT_LLM_MODEL: ${MENUAI_DEFAULT_LLM_MODEL:-openai-gpt-5.5}
       DEFAULT_LLM_MODEL: ${DEFAULT_LLM_MODEL:-openai-gpt-5.5}
+      MENUAI_GENERATION_MODE: ${MENUAI_GENERATION_MODE:-fast}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
@@ -102,7 +103,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.menu
-    image: goldneuronio/menuai-menu:v3.5.8
+    image: goldneuronio/menuai-menu:v3.5.9
     environment:
       NEXT_PUBLIC_API_URL: https://backend.neuros.my
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}

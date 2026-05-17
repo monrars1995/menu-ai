@@ -28,6 +28,7 @@ Detalhes e Docker: ver `INICIAR.md`.
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Habilita modelos diretos Gemini via LiteLLM. |
 | `OPENROUTER_API_KEY` | Habilita modelos OpenRouter (`queen-3.6`, `glm-5-1`, `kimi-k2.5`). |
 | `MENUAI_DEFAULT_LLM_MODEL` | Id interno opcional quando o pedido não envia `llm_model`; default `openai-gpt-5.5`. |
+| `MENUAI_GENERATION_MODE` | `fast` (default) usa geração estruturada rápida; `full` usa o pipeline completo legado de 7 etapas. |
 | `OPENROUTER_DEFAULT_MODEL` | Legado; ainda aceito se `MENUAI_DEFAULT_LLM_MODEL` estiver vazio. |
 | `MENUAI_APP_TITLE` / `OPENROUTER_HTTP_REFERER` | Opcional; headers de atribuição OpenRouter. |
 | `FICHAS_DB_STATS_TTL` | Segundos de cache em memória para `/api/info` e mensagens de progresso (fichas SQL). |

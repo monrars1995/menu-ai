@@ -166,6 +166,7 @@ export interface GerarRequest {
   nome_cardapio?: string;
   llm_model?: string;
   contrato_analise_confirmada?: boolean;
+  generation_mode?: "fast" | "full";
 }
 
 export interface JobStatus {
