@@ -405,10 +405,24 @@ function ConfirmCard({
         )}
       </div>
 
-      {data.restricoes && (
+      {data.restricoesContrato && (
         <div className="rounded-lg bg-white/10 p-3">
-          <span className="text-white/50">Restricoes:</span>
-          <p className="mt-0.5 font-medium text-white">{data.restricoes}</p>
+          <span className="text-white/50">Regras fixas do contrato:</span>
+          <p className="mt-0.5 whitespace-pre-wrap font-medium text-white">{data.restricoesContrato}</p>
+        </div>
+      )}
+
+      {data.restricoesAdicionais && (
+        <div className="rounded-lg bg-white/10 p-3">
+          <span className="text-white/50">Restricoes adicionais:</span>
+          <p className="mt-0.5 whitespace-pre-wrap font-medium text-white">{data.restricoesAdicionais}</p>
+        </div>
+      )}
+
+      {!data.restricoesAdicionais && (
+        <div className="rounded-lg bg-white/10 p-3">
+          <span className="text-white/50">Restricoes adicionais:</span>
+          <p className="mt-0.5 font-medium text-white">Nenhuma</p>
         </div>
       )}
 

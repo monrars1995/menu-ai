@@ -55,6 +55,8 @@ export interface ConfirmData {
   refeicoes: string[];
   custoAlvo: string;
   restricoes: string;
+  restricoesContrato?: string;
+  restricoesAdicionais?: string;
   contratoNome: string;
   modeloLabel?: string;
 }
@@ -90,6 +92,49 @@ export interface ChatState {
 
 const DEFAULT_REFEICOES = ["almoco", "jantar"];
 const LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
+
+function _cleanList(items?: string[]): string[] {
+  if (!items?.length) return [];
+  return Array.from(
+    new Set(
+      items
+        .map((x) => String(x || "").trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function buildContratoRestricoesFixas(analise: ContratoAnalise | null): string {
+  if (!analise) return "";
+  const dietas = _cleanList(analise.dietas_especiais);
+  const proibicoes = _cleanList(analise.proibicoes);
+  const alergenos = _cleanList(analise.restricoes_alergenos);
+  const incidencias = _cleanList(analise.incidencias);
+  const linhas: string[] = [];
+  if (dietas.length) linhas.push(`Dietas especiais do contrato: ${dietas.join(", ")}`);
+  if (proibicoes.length) linhas.push(`Proibicoes do contrato: ${proibicoes.join(", ")}`);
+  if (alergenos.length) linhas.push(`Alergenos/restricoes do contrato: ${alergenos.join(", ")}`);
+  if (incidencias.length) linhas.push(`Incidencias obrigatorias do contrato: ${incidencias.join(", ")}`);
+  return linhas.join("\n");
+}
+
+function buildRestricoesPayload(analise: ContratoAnalise | null, adicionais: string): string | undefined {
+  const fixas = buildContratoRestricoesFixas(analise);
+  const extra = (adicionais || "").trim();
+  const blocos: string[] = [];
+  if (fixas) blocos.push(`=== REGRAS FIXAS DO CONTRATO ===\n${fixas}`);
+  if (extra) blocos.push(`=== RESTRICOES ADICIONAIS DO USUARIO ===\n${extra}`);
+  const finalTxt = blocos.join("\n\n").trim();
+  return finalTxt || undefined;
+}
+
+function getPerguntaRestricoes(analise: ContratoAnalise | null): string {
+  const fixas = buildContratoRestricoesFixas(analise);
+  if (fixas) {
+    return "As restricoes do contrato ja serao aplicadas automaticamente. Deseja adicionar alguma restricao extra? (opcional)";
+  }
+  return "Ha alguma restricao adicional? (ex: sem gluten, vegano - pode pular)";
+}
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -309,7 +354,7 @@ export function useChatGenerator() {
         dias: s.dias,
         refeicoes: s.refeicoes,
         target_custo_total: s.custoAlvo ? parseFloat(s.custoAlvo) : undefined,
-        restricoes_usuario: s.restricoes || undefined,
+        restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
         llm_model: s.llmModel || undefined,
       })
       .then((res) => {
@@ -394,10 +439,8 @@ export function useChatGenerator() {
     }
     setState((s) => ({ ...s, custoAlvo: value, phase: "config-restrictions" }));
     setTimeout(() => {
-      addAgentMessage(
-        "text",
-        "Ha alguma restricao adicional? (ex: sem gluten, vegano - pode pular)"
-      );
+      const s = stateRef.current!;
+      addAgentMessage("text", getPerguntaRestricoes(s.contratoAnalise));
     }, 400);
   }
 
@@ -413,11 +456,16 @@ export function useChatGenerator() {
       const contratoNome =
         s.contratos.find((c) => c.id === s.contratoId)?.nome ||
         "Nenhum contrato";
+      const restricoesContrato = buildContratoRestricoesFixas(s.contratoAnalise);
+      const restricoesAdicionais = (value || "").trim();
+      const restricoesPayload = buildRestricoesPayload(s.contratoAnalise, value) || "";
       const confirmData: ConfirmData = {
         dias: s.dias,
         refeicoes: s.refeicoes,
         custoAlvo: s.custoAlvo,
-        restricoes: value,
+        restricoes: restricoesPayload,
+        restricoesContrato: restricoesContrato || undefined,
+        restricoesAdicionais: restricoesAdicionais || undefined,
         contratoNome,
         modeloLabel:
           s.llmModels.find((m) => m.id === s.llmModel)?.label ||
@@ -463,7 +511,7 @@ export function useChatGenerator() {
       target_custo_total: s.custoAlvo
         ? parseFloat(s.custoAlvo)
         : undefined,
-      restricoes_usuario: s.restricoes || undefined,
+      restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
       refeicoes: s.refeicoes,
       llm_model: s.llmModel || undefined,
     };
