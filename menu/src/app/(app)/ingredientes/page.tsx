@@ -24,6 +24,7 @@ export default function IngredientesPage() {
   const [editing, setEditing] = useState<Ingrediente | null>(null);
   const [deleting, setDeleting] = useState<Ingrediente | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     nome: "", codigo: "", unidade_medida: "g", custo_unitario: "", categoria: "",
@@ -41,11 +42,14 @@ export default function IngredientesPage() {
 
   async function load() {
     setLoading(true);
+    setLoadError(null);
     try {
       const [r, c] = await Promise.all([api.ingredientes.list(), api.ingredientes.categorias()]);
       setIngredientes(r.items || []);
       setCategorias(c.categorias || []);
-    } catch {}
+    } catch (e: any) {
+      setLoadError(e?.message || "Não foi possível carregar os ingredientes.");
+    }
     setLoading(false);
   }
 
@@ -121,11 +125,11 @@ export default function IngredientesPage() {
   ];
 
   return (
-    <div>
-      <PageHeader title="Ingredientes" description={`${filtered.length} ingrediente${filtered.length !== 1 ? "s" : ""} cadastrado${filtered.length !== 1 ? "s" : ""}`} actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Novo Ingrediente</Button>} />
+    <div className="space-y-4">
+      <PageHeader title="Ingredientes" description={`${ingredientes.length} ingrediente${ingredientes.length !== 1 ? "s" : ""} cadastrado${ingredientes.length !== 1 ? "s" : ""}`} actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Novo Ingrediente</Button>} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-hairline bg-white p-3">
+        <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted-48" />
           <input type="text" placeholder="Buscar…" value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-md border border-hairline bg-white py-2 pl-8 pr-3 text-sm placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
@@ -137,7 +141,13 @@ export default function IngredientesPage() {
         </select>
       </div>
 
-      <div className="rounded-lg border border-hairline bg-white">
+      {loadError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-lg border border-hairline bg-white">
         {loading ? <div className="py-12 text-center"><InlineLoader text="Carregando…" /></div>
         : filtered.length === 0 ? <EmptyState icon={Salad} title="Nenhum ingrediente encontrado" actionLabel="Novo Ingrediente" onAction={openCreate} />
         : <Table columns={columns} data={filtered} keyExtractor={(i) => i.id} />}

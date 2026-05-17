@@ -62,11 +62,13 @@ function AppChrome({ children }: { children: React.ReactNode }) {
       </header>
 
       <Sidebar id="app-sidebar" />
-      <main className="ml-0 flex w-full min-h-0 min-w-0 flex-1 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:ml-60 md:px-6 md:pb-6 md:pt-6">
-        <div className="mb-4 hidden items-center justify-end md:flex">
-          <BaseSummaryChip />
+      <main className="ml-0 flex w-full min-h-0 min-w-0 flex-1 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:ml-60 md:px-6 md:pb-8 md:pt-6">
+        <div className="mx-auto w-full max-w-[1320px]">
+          <div className="mb-5 hidden items-center justify-end md:flex">
+            <BaseSummaryChip />
+          </div>
+          {children}
         </div>
-        {children}
       </main>
     </div>
   );

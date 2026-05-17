@@ -48,7 +48,7 @@ export default function DashboardPage() {
   );
 
   return (
-    <div className="max-w-5xl">
+    <div>
       {/* Hero — greeting contextual */}
       <div className="pb-8 pt-2">
         <h1 className="text-[32px] font-medium tracking-tight text-ink">
@@ -93,7 +93,7 @@ export default function DashboardPage() {
             <p className="text-xs text-ink-muted-48">Fichas Técnicas</p>
             <p className="mt-0.5 flex items-center gap-1 text-[10px] text-ink-muted-48/60">
               <TrendingUp size={10} className="text-success" />
-              <span>vs. último mês</span>
+              <span>na base atual</span>
             </p>
           </div>
         </div>
@@ -109,7 +109,7 @@ export default function DashboardPage() {
             <p className="text-xs text-ink-muted-48">Ingredientes</p>
             <p className="mt-0.5 flex items-center gap-1 text-[10px] text-ink-muted-48/60">
               <TrendingUp size={10} className="text-success" />
-              <span>vs. último mês</span>
+              <span>na base atual</span>
             </p>
           </div>
         </div>

@@ -32,6 +32,7 @@ export default function CardapiosPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Debounce da busca
   useEffect(() => {
@@ -46,7 +47,9 @@ export default function CardapiosPage() {
 
   async function load() {
     setLoading(true);
-    try { const r = await api.cardapios.list(); setCardapios(r.items || []); } catch {}
+    setLoadError(null);
+    try { const r = await api.cardapios.list(); setCardapios(r.items || []); }
+    catch (e: any) { setLoadError(e?.message || "Não foi possível carregar os cardápios."); }
     setLoading(false);
   }
 
@@ -73,11 +76,11 @@ export default function CardapiosPage() {
   ];
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader title="Cardápios" description={`${filtered.length} cardápio${filtered.length !== 1 ? "s" : ""} encontrado${filtered.length !== 1 ? "s" : ""}`} actions={<Button onClick={() => router.push("/gerar")} size="sm"><UtensilsCrossed size={16} />Gerar Novo</Button>} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-hairline bg-white p-3">
+        <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted-48" />
           <input type="text" placeholder="Buscar cardápios…" value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-md border border-hairline bg-white py-2 pl-8 pr-3 text-sm placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
@@ -88,7 +91,13 @@ export default function CardapiosPage() {
         </select>
       </div>
 
-      <div className="rounded-lg border border-hairline bg-white">
+      {loadError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-lg border border-hairline bg-white">
         {loading ? (
           <div className="py-12 text-center"><InlineLoader text="Carregando…" /></div>
         ) : filtered.length === 0 ? (

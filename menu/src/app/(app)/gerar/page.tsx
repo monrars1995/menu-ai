@@ -32,7 +32,7 @@ function LlmModelSelect({
     return (
       <div className="inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-xs text-red-700">
         <Cpu size={14} />
-        Modelos indisponiveis
+        Modelos indisponíveis
       </div>
     );
   }
@@ -83,7 +83,7 @@ export default function GerarPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 flex items-center justify-end">
+      <div className="mb-5 flex items-center justify-end">
         <LlmModelSelect
           value={state.llmModel}
           models={state.llmModels}
@@ -93,11 +93,11 @@ export default function GerarPage() {
       </div>
 
       {isWizardStart ? (
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div className="flex-1 overflow-y-auto rounded-xl border border-hairline bg-white p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-5xl space-y-8">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-ink">Novo Cardápio</h1>
-              <p className="mt-2 text-ink-muted">
+              <h1 className="text-3xl font-medium tracking-tight text-ink">Novo Cardápio</h1>
+              <p className="mt-2 text-sm text-ink-muted">
                 Comece selecionando um contrato existente ou faça upload de um novo PDF para análise.
               </p>
             </div>

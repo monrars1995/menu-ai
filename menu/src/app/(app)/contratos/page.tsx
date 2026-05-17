@@ -67,6 +67,7 @@ export default function ContratosPage() {
   const [deleting, setDeleting] = useState<Contrato | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [form, setForm] = useState({ nome: "", numero_contrato: "", data_inicio: "", data_fim: "", custo_total_max: "", observacoes: "" });
 
@@ -82,7 +83,9 @@ export default function ContratosPage() {
 
   async function loadContratos() {
     setLoading(true);
-    try { const r = await api.contratos.list(); setContratos(r.items || []); } catch {}
+    setLoadError(null);
+    try { const r = await api.contratos.list(); setContratos(r.items || []); }
+    catch (e: any) { setLoadError(e?.message || "Não foi possível carregar os contratos."); }
     setLoading(false);
   }
 
@@ -393,15 +396,15 @@ export default function ContratosPage() {
   /* ---------- render ---------- */
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Contratos"
         description="Gerencie contratos e regras de alimentação"
         actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Novo Contrato</Button>}
       />
 
-      <div className="mb-4 flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex items-center gap-3 rounded-lg border border-hairline bg-white p-3">
+        <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted-48" />
           <input
             type="text" placeholder="Buscar contratos…" value={search} onChange={(e) => setSearch(e.target.value)}
@@ -410,7 +413,13 @@ export default function ContratosPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-hairline bg-white">
+      {loadError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-lg border border-hairline bg-white">
         {loading ? (
           <div className="py-12 text-center"><InlineLoader text="Carregando contratos…" /></div>
         ) : filtered.length === 0 ? (

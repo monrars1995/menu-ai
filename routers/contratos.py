@@ -23,6 +23,26 @@ UPLOAD_DIR = Path("data/uploads/contratos")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _resolve_empresa_context(usuario, empresa_id: Optional[str]) -> str:
+    requested = str(empresa_id).strip() if empresa_id else None
+    user_empresa = str(usuario.empresa_id).strip() if getattr(usuario, "empresa_id", None) else None
+
+    if usuario.role == "super_admin":
+        resolved = requested or user_empresa
+        if not resolved:
+            raise HTTPException(
+                status_code=400,
+                detail="Super admin sem empresa no contexto. Informe empresa_id.",
+            )
+        return resolved
+
+    if requested and requested != user_empresa:
+        raise HTTPException(status_code=403, detail="empresa_id não corresponde ao utilizador autenticado.")
+    if not user_empresa:
+        raise HTTPException(status_code=400, detail="Utilizador sem empresa associada.")
+    return user_empresa
+
+
 @router.get("/", summary="Listar contratos")
 def listar(
     empresa_id: Optional[str] = Query(None),
@@ -35,11 +55,8 @@ def listar(
     """Lista contratos. Usuário só vê contratos da própria empresa (exceto super_admin)."""
     q = db.query(Contrato)
 
-    # Restrição por empresa
-    if usuario.role != "super_admin":
-        q = q.filter(Contrato.empresa_id == usuario.empresa_id)
-    elif empresa_id:
-        q = q.filter(Contrato.empresa_id == empresa_id)
+    eid = _resolve_empresa_context(usuario, empresa_id)
+    q = q.filter(Contrato.empresa_id == eid)
 
     if ativo is not None:
         q = q.filter(Contrato.ativo == ativo)

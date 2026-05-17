@@ -21,7 +21,7 @@ interface TableProps<T> {
 
 export function Table<T>({ columns, data, keyExtractor, onRowClick, emptyMessage = "Nenhum dado encontrado", className }: TableProps<T>) {
   return (
-    <div className={cn("overflow-x-auto rounded-lg border border-hairline bg-white", className)}>
+    <div className={cn("overflow-x-auto", className)}>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-hairline bg-surface-soft text-left">

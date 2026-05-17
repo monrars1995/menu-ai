@@ -16,6 +16,26 @@ from routers.auth_supabase import exigir_role, get_usuario_atual
 router = APIRouter(prefix="/api/ingredientes", tags=["Ingredientes"])
 
 
+def _resolve_empresa_context(usuario, empresa_id: Optional[str]) -> str:
+    requested = str(empresa_id).strip() if empresa_id else None
+    user_empresa = str(usuario.empresa_id).strip() if getattr(usuario, "empresa_id", None) else None
+
+    if usuario.role == "super_admin":
+        resolved = requested or user_empresa
+        if not resolved:
+            raise HTTPException(
+                status_code=400,
+                detail="Super admin sem empresa no contexto. Informe empresa_id.",
+            )
+        return resolved
+
+    if requested and requested != user_empresa:
+        raise HTTPException(status_code=403, detail="empresa_id não corresponde ao utilizador autenticado.")
+    if not user_empresa:
+        raise HTTPException(status_code=400, detail="Utilizador sem empresa associada.")
+    return user_empresa
+
+
 @router.get("/", summary="Listar ingredientes")
 def listar(
     empresa_id: Optional[str] = Query(None),
@@ -34,7 +54,7 @@ def listar(
     """
     q = db.query(Ingrediente)
 
-    eid = empresa_id if usuario.role == "super_admin" else usuario.empresa_id
+    eid = _resolve_empresa_context(usuario, empresa_id)
     if incluir_globais:
         q = q.filter(
             (Ingrediente.empresa_id == eid) | (Ingrediente.empresa_id == None)

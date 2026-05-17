@@ -58,8 +58,8 @@ export function Sidebar({ id }: { id?: string }) {
                 "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium",
                 "transition-all duration-200 ease-out",
                 active
-                  ? "border-l-2 border-ink bg-primary-subtle text-ink"
-                  : "border-l-2 border-transparent text-ink-muted-48 hover:bg-surface-soft hover:text-ink hover:translate-x-0.5"
+                  ? "bg-primary-subtle text-ink ring-1 ring-hairline"
+                  : "text-ink-muted-48 hover:bg-surface-soft hover:text-ink hover:translate-x-0.5"
               )}
             >
               <Icon size={16} strokeWidth={active ? 2 : 1.5} className="transition-transform duration-200" />
@@ -94,7 +94,7 @@ export function Sidebar({ id }: { id?: string }) {
           Sair
         </button>
         <div className="mt-2 px-2 text-[10px] text-ink-muted-48/40 select-none">
-          v3.4.1
+          v3.5.2
         </div>
       </div>
     </aside>

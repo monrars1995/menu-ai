@@ -27,6 +27,7 @@ export default function FichasPage() {
   const [deleting, setDeleting] = useState<FichaTecnica | null>(null);
   const [saving, setSaving] = useState(false);
   const [recalculating, setRecalculating] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     nome: "", categoria: "", rendimento_porcoes: "", tempo_preparo_min: "",
@@ -45,12 +46,15 @@ export default function FichasPage() {
 
   async function load() {
     setLoading(true);
+    setLoadError(null);
     try {
       const [f, c, i] = await Promise.all([api.fichas.list(), api.fichas.categorias(), api.ingredientes.list()]);
       setFichas(f.items || []);
       setCategorias(c.categorias || []);
       setIngredientes(i.items || []);
-    } catch {}
+    } catch (e: any) {
+      setLoadError(e?.message || "Não foi possível carregar as fichas.");
+    }
     setLoading(false);
   }
 
@@ -137,11 +141,11 @@ export default function FichasPage() {
   ];
 
   return (
-    <div>
-      <PageHeader title="Fichas Técnicas" description={`${filtered.length} ficha${filtered.length !== 1 ? "s" : ""} cadastrada${filtered.length !== 1 ? "s" : ""}`} actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Nova Ficha</Button>} />
+    <div className="space-y-4">
+      <PageHeader title="Fichas Técnicas" description={`${fichas.length} ficha${fichas.length !== 1 ? "s" : ""} cadastrada${fichas.length !== 1 ? "s" : ""}`} actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Nova Ficha</Button>} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-hairline bg-white p-3">
+        <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted-48" />
           <input type="text" placeholder="Buscar fichas…" value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-md border border-hairline bg-white py-2 pl-8 pr-3 text-sm placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
@@ -153,7 +157,13 @@ export default function FichasPage() {
         </select>
       </div>
 
-      <div className="rounded-lg border border-hairline bg-white">
+      {loadError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {loadError}
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-lg border border-hairline bg-white">
         {loading ? <div className="py-12 text-center"><InlineLoader text="Carregando…" /></div>
         : filtered.length === 0 ? <EmptyState icon={BookOpen} title="Nenhuma ficha encontrada" actionLabel="Nova Ficha" onAction={openCreate} />
         : <Table columns={columns} data={filtered} keyExtractor={(f) => f.id} />}

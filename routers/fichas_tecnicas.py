@@ -75,6 +75,26 @@ def _calcular_ficha(ficha: FichaTecnica, db: Session) -> None:
     ficha.sodio_porcao        = round(sodio       / porcoes, 2) if sodio       else None
 
 
+def _resolve_empresa_context(usuario, empresa_id: Optional[str]) -> str:
+    requested = str(empresa_id).strip() if empresa_id else None
+    user_empresa = str(usuario.empresa_id).strip() if getattr(usuario, "empresa_id", None) else None
+
+    if usuario.role == "super_admin":
+        resolved = requested or user_empresa
+        if not resolved:
+            raise HTTPException(
+                status_code=400,
+                detail="Super admin sem empresa no contexto. Informe empresa_id.",
+            )
+        return resolved
+
+    if requested and requested != user_empresa:
+        raise HTTPException(status_code=403, detail="empresa_id não corresponde ao utilizador autenticado.")
+    if not user_empresa:
+        raise HTTPException(status_code=400, detail="Utilizador sem empresa associada.")
+    return user_empresa
+
+
 # ============================================================
 # Endpoints
 # ============================================================
@@ -97,7 +117,7 @@ def listar(
     """Lista fichas técnicas com filtros avançados."""
     q = db.query(FichaTecnica)
 
-    eid = empresa_id if usuario.role == "super_admin" else usuario.empresa_id
+    eid = _resolve_empresa_context(usuario, empresa_id)
     q = q.filter(FichaTecnica.empresa_id == eid)
 
     if categoria:
