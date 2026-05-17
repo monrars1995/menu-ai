@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import unicodedata
 from types import SimpleNamespace
 from typing import Any, List, Optional
 
@@ -16,14 +17,23 @@ from pipeline.sequential_spec import build_steps
 
 MAX_TOOL_TURNS = 32
 MAX_PRIOR_LEN = 14000
+OPENAI_TOOL_NAME_MAX_LEN = 64
+
+
+def _sanitize_tool_name(name: str) -> str:
+    """OpenAI exige nomes de tools em ^[a-zA-Z0-9_-]+$."""
+    raw = unicodedata.normalize("NFKD", str(name or "tool"))
+    ascii_name = raw.encode("ascii", "ignore").decode("ascii")
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "_", ascii_name).strip("_")
+    cleaned = re.sub(r"_+", "_", cleaned)
+    return (cleaned or "tool")[:OPENAI_TOOL_NAME_MAX_LEN]
 
 
 def _openai_name(tool: Any) -> str:
     n = getattr(tool, "name", None) or ""
     if not n and hasattr(tool, "func") and getattr(tool, "func", None) is not None:
         n = getattr(tool.func, "__name__", "tool")
-    s = re.sub(r"\s+", "_", str(n) or "tool")[:64]
-    return s or "tool"
+    return _sanitize_tool_name(str(n) or "tool")
 
 
 def _to_openai_tools(tools: List[Any]) -> List[dict]:
@@ -39,15 +49,25 @@ def _to_openai_tools(tools: List[Any]) -> List[dict]:
         except ImportError as e:
             raise ImportError("Instale langchain-core: pip install langchain-core") from e
     out: List[dict] = []
+    used_names: set[str] = set()
     for t in tools:
         if t is None:
             continue
         try:
             oa = convert_to_openai_tool(t)
-            if isinstance(oa, dict) and oa.get("type") == "function":
-                out.append(oa)
-            else:
-                out.append({"type": "function", "function": oa})
+            schema = oa if isinstance(oa, dict) and oa.get("type") == "function" else {"type": "function", "function": oa}
+            fn = schema.get("function") or {}
+            base = _sanitize_tool_name(fn.get("name") or _openai_name(t))
+            name = base
+            suffix = 2
+            while name in used_names:
+                tail = f"_{suffix}"
+                name = f"{base[:OPENAI_TOOL_NAME_MAX_LEN - len(tail)]}{tail}"
+                suffix += 1
+            used_names.add(name)
+            fn["name"] = name
+            schema["function"] = fn
+            out.append(schema)
         except Exception:
             continue
     return out
@@ -58,9 +78,17 @@ def _index_tools(tools: List[Any]) -> dict:
     for t in tools:
         if t is None:
             continue
-        a = _openai_name(t)
-        m[a] = t
-        m[a.lower()] = t
+        original = getattr(t, "name", None) or ""
+        aliases = {
+            _openai_name(t),
+            _sanitize_tool_name(original),
+            str(original),
+            str(original).replace(" ", "_"),
+        }
+        for a in aliases:
+            if a:
+                m[a] = t
+                m[a.lower()] = t
     return m
 
 
@@ -87,24 +115,26 @@ def _normalize_tool_calls(choice) -> List[dict]:
     out = []
     for tc in tcalls:
         if hasattr(tc, "id") and hasattr(tc, "function"):
+            name = _sanitize_tool_name(tc.function.name)
             out.append(
                 {
                     "id": getattr(tc, "id", "") or "",
                     "type": "function",
                     "function": {
-                        "name": tc.function.name,
+                        "name": name,
                         "arguments": tc.function.arguments or "{}",
                     },
                 }
             )
         elif isinstance(tc, dict):
             fn = tc.get("function") or {}
+            name = _sanitize_tool_name(fn.get("name", ""))
             out.append(
                 {
                     "id": tc.get("id", ""),
                     "type": "function",
                     "function": {
-                        "name": fn.get("name", ""),
+                        "name": name,
                         "arguments": fn.get("arguments", "{}")
                         if isinstance(fn.get("arguments"), str)
                         else json.dumps(fn.get("arguments", {})),
@@ -148,7 +178,7 @@ def _run_with_tools(
                 extra_headers=extra_headers,
             )
             if not result.success:
-                return f"[ERRO LLM] {result.error}"
+                raise RuntimeError(f"LLM falhou em {agent_name}: {result.error}")
             resp = result.response
         else:
             # Chamada direta (compatibilidade)
@@ -168,7 +198,7 @@ def _run_with_tools(
             try:
                 resp = completion(**kwargs)
             except Exception as e:
-                return f"[ERRO LLM] {e!s}"
+                raise RuntimeError(f"LLM falhou em {agent_name}: {e!s}") from e
 
         if not resp.choices:
             return ""

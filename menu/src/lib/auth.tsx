@@ -46,7 +46,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const u = await api.auth.me();
       setUser(u);
-    } catch {
+    } catch (e: any) {
+      if (e?.status === 401) clearToken();
       setUser(null);
     }
   }

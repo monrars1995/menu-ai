@@ -1,6 +1,6 @@
 
 """
-Menu.AI — Backend FastAPI v3.2.7
+Menu.AI — Backend FastAPI v3.5.8
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
@@ -28,7 +28,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.5.7"
+APP_VERSION = "3.5.8"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -648,6 +648,15 @@ async def stream_job(request: Request, job_id: str, usuario: Optional[Usuario] =
             yield f"data: {json.dumps({'type': 'log', 'message': 'reidratação a partir do banco'})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'result': r, 'progress': 100})}\n\n"
         return StreamingResponse(once(), media_type="text/event-stream")
+    if j and j.get("status") == "erro":
+        async def once_error():
+            yield f"data: {json.dumps({'type': 'error', 'message': j.get('error') or 'Job em erro', 'progress': j.get('progress', 0)}, ensure_ascii=False)}\n\n"
+
+        return StreamingResponse(
+            once_error(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     async def gen():
         q = job_state.job_queues[job_id]

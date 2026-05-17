@@ -21,13 +21,13 @@ def _hydrate_job_from_db(job_id: str, db_ok: bool) -> bool:
     """Recria entrada em `job_state.jobs` a partir de JobAgente após restart."""
     if not db_ok:
         return False
+    db = None
     try:
         from database.connection import SessionLocal
         from database.models import JobAgente
 
         db = SessionLocal()
         row = db.query(JobAgente).filter(JobAgente.job_id == job_id).first()
-        db.close()
         if not row:
             return False
         import queue
@@ -39,18 +39,38 @@ def _hydrate_job_from_db(job_id: str, db_ok: bool) -> bool:
                 logs = list(row.logs_json) if isinstance(row.logs_json, list) else []
             except Exception:
                 logs = []
+        status = row.status or "desconhecido"
+        erro = row.erro
+        progress = row.progresso or 0
+        if status in {"iniciando", "executando", "aguardando_confirmacao"}:
+            status = "erro"
+            erro = erro or (
+                "Esta geração foi interrompida por reinício/deploy do servidor. "
+                "Inicie uma nova geração para continuar."
+            )
+            if row.status != "erro":
+                row.status = "erro"
+                row.erro = erro
+                row.updated_at = datetime.utcnow()
+                db.commit()
         job_state.jobs[job_id] = {
-            "status": row.status or "desconhecido",
-            "progress": row.progresso or 0,
+            "status": status,
+            "progress": progress,
             "logs": logs,
             "result": row.resultado_raw,
-            "error": row.erro,
+            "error": erro,
             "config": row.parametros_json or {},
             "empresa_id": str(row.empresa_id) if row.empresa_id else None,
         }
         return True
     except Exception:
         return False
+    finally:
+        if db is not None:
+            try:
+                db.close()
+            except Exception:
+                pass
 
 
 def get_job_or_restore(job_id: str, db_ok: bool) -> Optional[dict]:
