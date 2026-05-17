@@ -37,6 +37,8 @@ export function MessageInput(props: MessageInputProps) {
   const [custoDraft, setCustoDraft] = useState(props.custoValue ?? "");
   const [restricoesDraft, setRestricoesDraft] = useState(props.restricoesValue ?? "");
   const [chatDraft, setChatDraft] = useState("");
+  const [refeicoesDraft, setRefeicoesDraft] = useState<string[]>(props.refeicoesValue ?? []);
+  const [refeicoesText, setRefeicoesText] = useState("");
 
   const prevPhase = useRef<ChatPhase>(phase);
   useEffect(() => {
@@ -44,9 +46,25 @@ export function MessageInput(props: MessageInputProps) {
       if (phase === "config-days") setDiasDraft(String(props.diasValue ?? 5));
       else if (phase === "config-cost") setCustoDraft(props.custoValue ?? "");
       else if (phase === "config-restrictions") setRestricoesDraft(props.restricoesValue ?? "");
+      else if (phase === "config-meals") {
+        setRefeicoesDraft(props.refeicoesValue ?? []);
+        setRefeicoesText("");
+      }
       prevPhase.current = phase;
     }
-  }, [phase, props.diasValue, props.custoValue, props.restricoesValue]);
+  }, [phase, props.diasValue, props.custoValue, props.restricoesValue, props.refeicoesValue]);
+
+  function handleConfirmMeals() {
+    let finalMeals = [...refeicoesDraft];
+    if (refeicoesText.trim()) {
+      const extra = refeicoesText.split(",").map((s) => s.trim()).filter(Boolean);
+      finalMeals = [...finalMeals, ...extra];
+    }
+    finalMeals = Array.from(new Set(finalMeals));
+    if (finalMeals.length > 0) {
+      props.onSetRefeicoes?.(finalMeals);
+    }
+  }
 
   // Welcome / analysis — contract selection + upload
   if (phase === "welcome" || phase === "analysis") {
@@ -122,18 +140,40 @@ export function MessageInput(props: MessageInputProps) {
     );
   }
 
-  // Meals — inline MealSelector
+  // Meals — inline MealSelector + Text input
   if (phase === "config-meals") {
     return (
       <div className={stickyInputShell}>
         <div className="mx-auto max-w-2xl">
-          <div className="max-h-[min(50vh,22rem)] overflow-y-auto sm:max-h-none">
-            <MealSelector
-              selected={props.refeicoesValue ?? []}
-              onChange={(v) => {
-                if (v.length > 0) props.onSetRefeicoes?.(v);
-              }}
-            />
+          <div className="flex flex-col gap-3">
+            <div className="max-h-[min(50vh,15rem)] overflow-y-auto sm:max-h-none">
+              <MealSelector
+                selected={refeicoesDraft}
+                onChange={setRefeicoesDraft}
+              />
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                placeholder="Outras refeições (separadas por vírgula)"
+                value={refeicoesText}
+                onChange={(e) => setRefeicoesText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleConfirmMeals();
+                  }
+                }}
+                className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]"
+              />
+              <button
+                onClick={handleConfirmMeals}
+                className="flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border sm:w-auto"
+              >
+                <Send size={14} />
+                Confirmar
+              </button>
+            </div>
           </div>
         </div>
       </div>
