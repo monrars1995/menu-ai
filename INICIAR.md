@@ -1,4 +1,4 @@
-# Menu.AI v3.5.9 — Como iniciar
+# Menu.AI v3.6.0 — Como iniciar
 
 ## Stack suportada
 
@@ -8,6 +8,8 @@
 | **Supabase** | Produção, staging ou dev cloud | `SUPABASE_DB_URL` com conexão Postgres do projeto | `alembic upgrade head` contra o projeto Supabase |
 
 **`POST /api/gerar`:** o servidor preenche `empresa_id` a partir do JWT se o corpo do pedido o omitir. Com `DEBUG=true` e `DEMO_GERAR_SEM_AUTH=true`, sem token usa-se `DEFAULT_EMPRESA_ID`.
+
+**Resultado no chat:** ao concluir, a interface mostra uma prévia tabular do cardápio e pede decisão: aprovar o cardápio ou gerar novamente com os mesmos parâmetros. O XLSX também recebe abas no layout padrão de refeição/desjejum com `% Consumo`.
 
 **Verificação rápida (CLI):** com o venv ativo, na raiz do repositório: `python3 scripts/verify_stack.py` — valida PostgreSQL, contagens básicas, catálogo LLM e tenta `GET /api/health`. Smoke do fluxo de geração: `DEBUG=true DEMO_GERAR_SEM_AUTH=true python3 scripts/smoke_flow.py`.
 

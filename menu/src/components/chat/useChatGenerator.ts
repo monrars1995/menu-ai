@@ -71,6 +71,22 @@ export interface ResultData {
   nome: string;
   numDias: number;
   custoMedioDia: number;
+  status?: string;
+  preview?: CardapioPreviewDay[];
+  warnings?: string[];
+}
+
+export interface CardapioPreviewDay {
+  dia: number;
+  refeicao: string;
+  proteicos: string[];
+  acompanhamentos: string[];
+  saladas: string[];
+  sobremesa?: string;
+  bebida?: string;
+  fruta?: string;
+  tema?: string;
+  custo?: number;
 }
 
 export interface UploadData {
@@ -318,6 +334,66 @@ export function useChatGenerator() {
     if (progress >= 30) return 2;
     if (progress >= 15) return 1;
     return 0;
+  }
+
+  function buildCardapioPreview(cardapio: Cardapio): CardapioPreviewDay[] {
+    const days = [...(cardapio.dias || [])].sort((a, b) => Number(a.numero_dia || 0) - Number(b.numero_dia || 0));
+    const preview: CardapioPreviewDay[] = [];
+    for (const day of days) {
+      const byMeal = new Map<string, NonNullable<Cardapio["dias"]>[number]["refeicoes"]>();
+      for (const ref of day.refeicoes || []) {
+        const key = ref.tipo_refeicao || "almoco";
+        const current = byMeal.get(key) || [];
+        current.push(ref);
+        byMeal.set(key, current);
+      }
+      for (const [meal, refs = []] of byMeal) {
+        const byCategory = (needle: string) =>
+          refs
+            .filter((r) => String(r.categoria || "").toLowerCase().includes(needle))
+            .map((r) => String(r.nome_prato || r.ficha_tecnica_nome || "").trim())
+            .filter(Boolean);
+        const exact = (name: string) =>
+          refs.find((r) => String(r.categoria || "").toLowerCase() === name.toLowerCase())?.nome_prato;
+        const includesAny = (...needles: string[]) =>
+          refs
+            .filter((r) => needles.some((n) => String(r.categoria || "").toLowerCase().includes(n)))
+            .map((r) => String(r.nome_prato || r.ficha_tecnica_nome || "").trim())
+            .filter(Boolean);
+        preview.push({
+          dia: Number(day.numero_dia || preview.length + 1),
+          refeicao: meal.replace(/_/g, " "),
+          proteicos: byCategory("proteic"),
+          acompanhamentos: includesAny("arroz", "feij", "guarni", "acompanhamento", "pão", "recheio"),
+          saladas: byCategory("salada"),
+          sobremesa: exact("Sobremesa"),
+          bebida: exact("Bebida") || exact("Bebida Café"),
+          fruta: exact("Fruta") || exact("Fruta Café"),
+          tema: undefined,
+          custo: Number(day.custo_total || 0),
+        });
+      }
+    }
+    return preview.slice(0, 30);
+  }
+
+  function validationWarnings(cardapio: Cardapio): string[] {
+    const raw = cardapio.parametros_json?.validation_warnings;
+    return Array.isArray(raw) ? raw.map((x) => String(x)).filter(Boolean).slice(0, 5) : [];
+  }
+
+  function resultDataFromCardapio(jobId: string, cardapio: Cardapio): ResultData {
+    const s = stateRef.current!;
+    return {
+      jobId,
+      cardapioId: cardapio.id,
+      nome: cardapio.nome || "Cardapio",
+      numDias: cardapio.num_dias || s.dias,
+      custoMedioDia: cardapio.custo_medio_dia || 0,
+      status: cardapio.status,
+      preview: buildCardapioPreview(cardapio),
+      warnings: validationWarnings(cardapio),
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -607,6 +683,7 @@ export function useChatGenerator() {
       refeicoes: s.refeicoes,
       llm_model: s.llmModel || undefined,
       contrato_analise_confirmada: s.contratoAnalise?.status === "analisado",
+      generation_mode: "fast",
     };
 
     api.gerar
@@ -638,17 +715,21 @@ export function useChatGenerator() {
     function finishSuccess() {
       api.cardapios
         .list(`job_id=${jobId}`)
-        .then((r) => {
+        .then(async (r) => {
           const s = stateRef.current!;
           const item = r.items?.[0] as Cardapio | undefined;
-          const resultData: ResultData = item
-            ? {
-                jobId,
-                cardapioId: item.id,
-                nome: item.nome || "Cardapio",
-                numDias: item.num_dias || s.dias,
-                custoMedioDia: item.custo_medio_dia || 0,
-              }
+          let detailed: Cardapio | null = item || null;
+          if (item?.id) {
+            try {
+              detailed = (await api.cardapios.get(item.id)) as Cardapio;
+            } catch {
+              detailed = item;
+            }
+          }
+          const resultData: ResultData = detailed
+            ? resultDataFromCardapio(jobId, detailed)
+            : item
+            ? resultDataFromCardapio(jobId, item)
             : {
                 jobId,
                 cardapioId: "",
@@ -662,12 +743,16 @@ export function useChatGenerator() {
             loading: false,
             cardapioId: item?.id || null,
           }));
-          addAgentMessage("result", "Cardapio gerado com sucesso!", { resultData });
+          addAgentMessage(
+            "result",
+            "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.",
+            { resultData }
+          );
         })
         .catch(() => {
           const s = stateRef.current!;
           setState((prev) => ({ ...prev, phase: "result", loading: false }));
-          addAgentMessage("result", "Cardapio gerado com sucesso!", {
+          addAgentMessage("result", "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.", {
             resultData: {
               jobId,
               cardapioId: "",
@@ -739,19 +824,21 @@ export function useChatGenerator() {
             setState((prev) => ({ ...prev, phase: "result", loading: false }));
             api.cardapios
               .list(`job_id=${jobId}`)
-              .then((r) => {
+              .then(async (r) => {
                 if (r.items?.[0]) {
                   const item = r.items[0] as Cardapio;
-                  const resultData: ResultData = {
-                    jobId,
-                    cardapioId: item.id,
-                    nome: item.nome || "Cardapio",
-                    numDias: item.num_dias || stateRef.current!.dias,
-                    custoMedioDia: item.custo_medio_dia || 0,
-                  };
+                  let detailed = item;
+                  if (item.id) {
+                    try {
+                      detailed = (await api.cardapios.get(item.id)) as Cardapio;
+                    } catch {
+                      detailed = item;
+                    }
+                  }
+                  const resultData: ResultData = resultDataFromCardapio(jobId, detailed);
                   addAgentMessage(
                     "result",
-                    "Cardapio gerado com sucesso!",
+                    "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.",
                     { resultData }
                   );
                 }
@@ -794,6 +881,38 @@ export function useChatGenerator() {
       "text",
       "Ola! Vou te ajudar a gerar um cardapio inteligente. Comece selecionando um contrato existente ou fazendo upload do PDF."
     );
+  }
+
+  function regenerateCardapio() {
+    if (eventSourceRef.current) eventSourceRef.current.close();
+    startGeneration();
+  }
+
+  function approveGeneratedCardapio(cardapioId: string) {
+    if (!cardapioId) {
+      addAgentMessage("error", "Cardápio ainda não está disponível para aprovação.");
+      return;
+    }
+    addUserMessage("Aprovar cardápio");
+    setState((prev) => ({ ...prev, loading: true }));
+    api.cardapios
+      .aprovar(cardapioId, "aprovado", "Aprovado pelo chat de geração.")
+      .then(() => {
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          messages: prev.messages.map((msg) =>
+            msg.resultData?.cardapioId === cardapioId
+              ? { ...msg, resultData: { ...msg.resultData, status: "aprovado" } }
+              : msg
+          ),
+        }));
+        addAgentMessage("text", "Cardápio aprovado. Você já pode baixar ou consultar o registro completo.");
+      })
+      .catch((e) => {
+        setState((prev) => ({ ...prev, loading: false }));
+        addAgentMessage("error", e.message || "Não foi possível aprovar o cardápio.");
+      });
   }
 
   function setLlmModel(modelId: string) {
@@ -869,6 +988,8 @@ export function useChatGenerator() {
     handleAdjust,
     startGeneration,
     handleNewGeneration,
+    regenerateCardapio,
+    approveGeneratedCardapio,
     setLlmModel,
     confirmHitl,
     sendChatMessage,

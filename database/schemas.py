@@ -403,6 +403,8 @@ class CardapioOut(CardapioBase):
 
 class CardapioDetalhado(CardapioOut):
     dias: List[CardapioDiaOut] = []
+    resultado_raw: Optional[str] = None
+    parametros_json: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -412,7 +414,7 @@ class CardapioDetalhado(CardapioOut):
 # APROVAÇÃO
 # ============================================================
 class AprovacaoCreate(BaseModel):
-    cardapio_id: str
+    cardapio_id: Optional[str] = None
     status: str = Field(..., pattern=r"^(aprovado|reprovado|solicitado_revisao)$")
     comentario: Optional[str] = None
 

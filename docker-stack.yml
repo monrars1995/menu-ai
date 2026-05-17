@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: goldneuronio/menuai-app:v3.5.9
+    image: goldneuronio/menuai-app:v3.6.0
     environment:
       SUPABASE_DB_URL: ${SUPABASE_DB_URL}
       DATABASE_URL: ${SUPABASE_DB_URL}
@@ -103,7 +103,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.menu
-    image: goldneuronio/menuai-menu:v3.5.9
+    image: goldneuronio/menuai-menu:v3.6.0
     environment:
       NEXT_PUBLIC_API_URL: https://backend.neuros.my
       NEXT_PUBLIC_SUPABASE_URL: ${SUPABASE_URL}

@@ -189,6 +189,8 @@ def aprovar(
     cardapio = db.query(Cardapio).filter(Cardapio.id == cardapio_id).first()
     if not cardapio:
         raise HTTPException(status_code=404, detail="Cardápio não encontrado.")
+    if body.cardapio_id and body.cardapio_id != cardapio_id:
+        raise HTTPException(status_code=400, detail="cardapio_id do corpo não corresponde à URL.")
 
     aprovacao = AprovacaoCardapio(
         cardapio_id=cardapio_id,
@@ -482,6 +484,181 @@ def _cardapio_export_dataframe(cardapio: Cardapio, db: Session) -> pd.DataFrame:
     return _limpar_dataframe_export(_enriquecer_custos_dataframe(df, cardapio, db))
 
 
+def _norm_export_key(value: object) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = text.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _safe_day(value: object) -> Optional[int]:
+    try:
+        return int(float(str(value).replace("*", "").strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+_WEEKDAYS = ["segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo"]
+
+_REFEICAO_TEMPLATE_ROWS = [
+    ("PRATO PROTEICO", "Prato Proteico Principal", "% Consumo Principal"),
+    ("PRATO PROTEICO", "Opção Proteica 2", "% Consumo Opção 2"),
+    ("PRATO PROTEICO", "Opção Proteica 3", "% Consumo Opção 3"),
+    ("ARROZ", "Arroz", "100"),
+    ("FEIJAO", "Feijão", "100"),
+    ("GUARNICAO", "Guarnição 1", "100"),
+    ("GUARNICAO", "Guarnição 2", "100"),
+    ("SALADA GRAOS", "Salada Grãos", "100"),
+    ("SALADAS CRUA", "Salada Crua", "100"),
+    ("SALADA COZIDA", "Salada Cozida", "100"),
+    ("SALADA ELABORADA", "Salada Folhosa/Elaborada", "100"),
+    ("SOBREMESA", "Sobremesa", "100"),
+    ("BEBIDAS", "Bebida", "100"),
+    ("FRUTAS", "Fruta", "100"),
+    ("CUSTO GERENCIAL", "Custo Gerencial (R$)", ""),
+]
+
+_DESJEJUM_TEMPLATE_ROWS = [
+    ("PAO", "Pão", "100"),
+    ("RECHEIO", "Recheio 1", "% Consumo Recheio 1"),
+    ("RECHEIO", "Recheio 2", "% Consumo Recheio 2"),
+    ("ACOMPANHAMENTO", "Acompanhamento Café", "100"),
+    ("BEBIDAS", "Bebida Café", "100"),
+    ("FRUTAS", "Fruta Café", "100"),
+    ("CUSTO GERENCIAL", "Custo Gerencial (R$)", ""),
+]
+
+
+def _df_rows_by_day_ref(df: pd.DataFrame) -> dict[tuple[int, str], dict[str, object]]:
+    rows: dict[tuple[int, str], dict[str, object]] = {}
+    if df.empty or "Dia" not in df.columns or "Refeição" not in df.columns:
+        return rows
+    for _, row in df.iterrows():
+        day = _safe_day(row.get("Dia"))
+        if day is None:
+            continue
+        rows[(day, _norm_export_key(row.get("Refeição")))] = row.to_dict()
+    return rows
+
+
+def _standard_value(row: Optional[dict[str, object]], value_col: str, pct_col: str) -> tuple[str, str]:
+    if not row:
+        return "", ""
+    value = _limpar_texto_export(row.get(value_col, ""))
+    if not value or value == "-":
+        return "", ""
+    if pct_col in row:
+        pct = _limpar_texto_export(row.get(pct_col, ""))
+    else:
+        pct = pct_col
+    if not pct or pct == "-":
+        pct = ""
+    return value, pct
+
+
+def _style_standard_matrix(ws, start_row: int, end_row: int, max_col: int) -> None:
+    title_fill = PatternFill(start_color="111827", end_color="111827", fill_type="solid")
+    header_fill = PatternFill(start_color="2F5496", end_color="2F5496", fill_type="solid")
+    sub_fill = PatternFill(start_color="E5E7EB", end_color="E5E7EB", fill_type="solid")
+    for row_idx in range(start_row, end_row + 1):
+        for col_idx in range(1, max_col + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = _THIN_BORDER
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            if row_idx == start_row:
+                cell.fill = title_fill
+                cell.font = Font(name="Calibri", bold=True, color="FFFFFF")
+            elif row_idx in {start_row + 1, start_row + 2, start_row + 3, start_row + 4}:
+                cell.fill = header_fill if row_idx < start_row + 4 else sub_fill
+                cell.font = Font(name="Calibri", bold=True, color="FFFFFF" if row_idx < start_row + 4 else "111827")
+            elif col_idx == 1:
+                cell.fill = sub_fill
+                cell.font = Font(name="Calibri", bold=True, color="111827")
+
+
+def _write_standard_matrix_sheet(
+    wb,
+    df: pd.DataFrame,
+    *,
+    title: str,
+    refeicoes: list[str],
+    template_rows: list[tuple[str, str, str]],
+) -> bool:
+    rows_by_key = _df_rows_by_day_ref(df)
+    if not rows_by_key:
+        return False
+
+    ref_keys: dict[str, str] = {}
+    for refeicao in refeicoes:
+        ref_keys.setdefault(_norm_export_key(refeicao), refeicao)
+
+    available_days = sorted({day for day, ref in rows_by_key if ref in ref_keys})
+    if not available_days:
+        return False
+
+    ws = wb.create_sheet(title[:31])
+    row_cursor = 1
+    max_col = 15
+    for ref_key, refeicao in ref_keys.items():
+        days = sorted(day for day, key in rows_by_key if key == ref_key)
+        if not days:
+            continue
+        for block_index in range(0, len(days), 7):
+            week_days = days[block_index:block_index + 7]
+            start = row_cursor
+            ws.cell(row=row_cursor, column=1, value=f"{title} - {refeicao}")
+            for col in range(2, max_col + 1):
+                ws.cell(row=row_cursor, column=col, value="")
+            row_cursor += 1
+
+            header_rows = [
+                ("Grupo de Pratos", "Sequência:"),
+                ("Dia", None),
+                ("Data", None),
+                ("", "% Consumo"),
+            ]
+            for label, marker in header_rows:
+                ws.cell(row=row_cursor, column=1, value=label)
+                for i, day in enumerate(week_days):
+                    value_col = 2 + i * 2
+                    pct_col = value_col + 1
+                    if label == "Grupo de Pratos":
+                        ws.cell(row=row_cursor, column=value_col, value=marker)
+                        ws.cell(row=row_cursor, column=pct_col, value=day)
+                    elif label == "Dia":
+                        ws.cell(row=row_cursor, column=value_col, value=_WEEKDAYS[(day - 1) % 7])
+                        ws.cell(row=row_cursor, column=pct_col, value="NR")
+                    elif label == "Data":
+                        row = rows_by_key.get((day, ref_key), {})
+                        ws.cell(row=row_cursor, column=value_col, value=_limpar_texto_export(row.get("Data", "")))
+                        ws.cell(row=row_cursor, column=pct_col, value=_limpar_texto_export(row.get("Custo Gerencial (R$)", "")))
+                    else:
+                        ws.cell(row=row_cursor, column=value_col, value="")
+                        ws.cell(row=row_cursor, column=pct_col, value=marker)
+                row_cursor += 1
+
+            for group, value_col_name, pct_col_name in template_rows:
+                ws.cell(row=row_cursor, column=1, value=group)
+                for i, day in enumerate(week_days):
+                    row = rows_by_key.get((day, ref_key))
+                    value, pct = _standard_value(row, value_col_name, pct_col_name)
+                    value_col = 2 + i * 2
+                    ws.cell(row=row_cursor, column=value_col, value=value)
+                    ws.cell(row=row_cursor, column=value_col + 1, value=pct)
+                row_cursor += 1
+
+            _style_standard_matrix(ws, start, row_cursor - 1, max_col)
+            row_cursor += 2
+
+    if row_cursor == 1:
+        wb.remove(ws)
+        return False
+
+    ws.column_dimensions["A"].width = 22
+    for col_idx in range(2, max_col + 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = 18 if col_idx % 2 == 0 else 11
+    return True
+
+
 def _extrair_markdown(texto: str) -> pd.DataFrame:
     linhas = [l.strip() for l in texto.split("\n") if "|" in l]
     linhas = [l for l in linhas if not re.match(r"^\|[\s\-:|]+\|$", l)]
@@ -679,6 +856,22 @@ def _gerar_xlsx(cardapio: Cardapio, db: Session) -> io.BytesIO:
     rows = [list(r) for r in df.values]
     ws1 = wb.active
     _write_sheet(ws1, headers, rows, "Cardápio")
+
+    # --- Sheets no layout operacional enviado pelo cliente ---
+    _write_standard_matrix_sheet(
+        wb,
+        df,
+        title="Modelo Refeição",
+        refeicoes=["Almoço", "Jantar"],
+        template_rows=_REFEICAO_TEMPLATE_ROWS,
+    )
+    _write_standard_matrix_sheet(
+        wb,
+        df,
+        title="Modelo Desjejum",
+        refeicoes=["Café da manhã", "Cafe da Manha", "Desjejum", "Lanche da Manhã"],
+        template_rows=_DESJEJUM_TEMPLATE_ROWS,
+    )
 
     # --- Sheet 2: Lista de Compras (agrupar ingredientes das fichas usadas) ---
     compras_headers = ["Categoria", "Ingrediente", "Qtd Total (g)", "Custo Est. (R$)"]

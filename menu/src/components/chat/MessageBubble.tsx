@@ -18,6 +18,7 @@ import {
   FileSpreadsheet,
   FileText as FileTextIcon,
   Upload,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentAvatar, UserAvatar } from "@/components/chat/ChatContainer";
@@ -68,6 +69,8 @@ export interface MessageBubbleProps {
   onStartGeneration?: () => void;
   onAdjust?: () => void;
   onNewGeneration?: () => void;
+  onRegenerate?: () => void;
+  onApproveResult?: (cardapioId: string) => void;
   onConfirmHitl?: (confirm: boolean, ajustes?: string) => void;
   onAnalyzeContrato?: (id?: string, nome?: string, force?: boolean) => void;
 }
@@ -152,7 +155,12 @@ export function MessageBubble(props: MessageBubbleProps) {
           />
         )}
         {type === "result" && (
-          <ResultCard data={props.resultData} onNewGeneration={props.onNewGeneration} />
+          <ResultCard
+            data={props.resultData}
+            onNewGeneration={props.onNewGeneration}
+            onRegenerate={props.onRegenerate}
+            onApproveResult={props.onApproveResult}
+          />
         )}
         {type === "error" && <ErrorCard erro={props.erro || content} />}
       </div>
@@ -526,9 +534,13 @@ function ConfirmCard({
 function ResultCard({
   data,
   onNewGeneration,
+  onRegenerate,
+  onApproveResult,
 }: {
   data?: ResultData;
   onNewGeneration?: () => void;
+  onRegenerate?: () => void;
+  onApproveResult?: (cardapioId: string) => void;
 }) {
   if (!data) return null;
 
@@ -537,29 +549,113 @@ function ResultCard({
       api.cardapios.download(data.cardapioId, formato);
     }
   };
+  const isApproved = data.status === "aprovado" || data.status === "publicado";
+  const preview = data.preview || [];
 
   return (
-    <div className="rounded-xl bg-signature-cream p-5 space-y-4">
+    <div className="w-full rounded-xl border border-hairline bg-white p-5 shadow-sm shadow-black/[0.03] space-y-4">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-success/15">
           <CheckCircle2 size={18} className="text-success" />
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-ink">{data.nome}</p>
           <p className="text-xs text-ink-muted-48">
             {data.numDias} dias
             {data.custoMedioDia > 0 && ` • Custo medio: R$ ${data.custoMedioDia.toFixed(2)}/dia`}
           </p>
         </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium",
+            isApproved ? "bg-success/10 text-success" : "bg-amber-100 text-amber-800"
+          )}
+        >
+          {isApproved ? "Aprovado" : "Aguardando revisão"}
+        </span>
+      </div>
+
+      {preview.length > 0 && (
+        <div className="rounded-lg border border-hairline bg-surface-soft/60">
+          <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted-80">Prévia do cardápio</p>
+            <p className="text-[11px] text-ink-muted-48">{preview.length} linhas</p>
+          </div>
+          <div className="max-h-80 overflow-auto">
+            <table className="min-w-[760px] w-full border-collapse text-left text-xs">
+              <thead className="sticky top-0 bg-white shadow-[0_1px_0_rgba(0,0,0,0.08)]">
+                <tr className="text-[11px] uppercase tracking-wide text-ink-muted-48">
+                  <th className="px-3 py-2 font-semibold">Dia</th>
+                  <th className="px-3 py-2 font-semibold">Refeição</th>
+                  <th className="px-3 py-2 font-semibold">Proteicos</th>
+                  <th className="px-3 py-2 font-semibold">Acompanhamentos</th>
+                  <th className="px-3 py-2 font-semibold">Saladas</th>
+                  <th className="px-3 py-2 font-semibold">Finalização</th>
+                  <th className="px-3 py-2 text-right font-semibold">Custo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.map((day, index) => (
+                  <tr key={`${day.dia}-${day.refeicao}-${index}`} className="border-t border-hairline/70 align-top">
+                    <td className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{day.dia}</td>
+                    <td className="whitespace-nowrap px-3 py-2 capitalize text-ink-muted-80">{day.refeicao}</td>
+                    <td className="px-3 py-2 text-ink">{day.proteicos.slice(0, 3).join(" / ") || "-"}</td>
+                    <td className="px-3 py-2 text-ink-muted-80">{day.acompanhamentos.slice(0, 4).join(" / ") || "-"}</td>
+                    <td className="px-3 py-2 text-ink-muted-80">{day.saladas.slice(0, 3).join(" / ") || "-"}</td>
+                    <td className="px-3 py-2 text-ink-muted-80">
+                      {[day.sobremesa, day.bebida, day.fruta].filter(Boolean).join(" / ") || "-"}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-medium text-ink">
+                      {day.custo && day.custo > 0 ? `R$ ${day.custo.toFixed(2)}` : "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {data.warnings && data.warnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-xs font-medium text-amber-900">Ajustes automáticos aplicados</p>
+          <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-amber-800">
+            {data.warnings.map((warning, index) => (
+              <li key={index}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => onApproveResult?.(data.cardapioId)}
+          disabled={!data.cardapioId || isApproved}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2",
+            isApproved
+              ? "cursor-default bg-success/10 text-success"
+              : "bg-primary text-white hover:bg-primary-active"
+          )}
+        >
+          <CheckCircle2 size={12} /> {isApproved ? "Aprovado" : "Aprovar cardápio"}
+        </button>
+        <button
+          onClick={onRegenerate}
+          className="flex items-center gap-1.5 rounded-lg border border-hairline bg-white px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-surface-soft"
+        >
+          <RefreshCw size={12} /> Gerar novamente
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <a
-          href={api.gerar.download(data.jobId, "xlsx")}
+        <button
+          onClick={() => handleDownload("xlsx")}
+          disabled={!data.cardapioId}
           className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
         >
           <Download size={12} /> XLSX
-        </a>
+        </button>
         <button
           onClick={() => handleDownload("csv")}
           className="flex items-center gap-1.5 rounded-lg border border-hairline bg-white px-4 py-2 text-xs font-medium text-ink hover:bg-surface-soft hover:shadow-sm transition-all"
@@ -592,7 +688,7 @@ function ResultCard({
         onClick={onNewGeneration}
         className="text-xs text-link hover:underline"
       >
-        Gerar outro cardapio
+        Começar com outro contrato
       </button>
     </div>
   );

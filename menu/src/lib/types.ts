@@ -126,6 +126,7 @@ export interface CardapioDia {
 export interface CardapioRefeicao {
   id?: string;
   tipo_refeicao: string;
+  categoria?: string;
   ficha_tecnica_id?: string;
   codigo_prato?: string;
   nome_prato?: string;
@@ -146,7 +147,7 @@ export interface Cardapio {
   status: string;
   custo_medio_dia?: number;
   num_dias?: number;
-  resultado_raw?: Record<string, unknown>;
+  resultado_raw?: string;
   parametros_json?: Record<string, unknown>;
   job_id?: string;
   observacoes?: string;

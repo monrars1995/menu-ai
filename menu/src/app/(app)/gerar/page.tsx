@@ -75,6 +75,8 @@ export default function GerarPage() {
     handleAdjust,
     startGeneration,
     handleNewGeneration,
+    regenerateCardapio,
+    approveGeneratedCardapio,
     confirmHitl,
     sendChatMessage,
     setLlmModel,
@@ -131,6 +133,8 @@ export default function GerarPage() {
               onStartGeneration={startGeneration}
               onAdjust={handleAdjust}
               onNewGeneration={handleNewGeneration}
+              onRegenerate={regenerateCardapio}
+              onApproveResult={approveGeneratedCardapio}
               onConfirmHitl={confirmHitl}
               onAnalyzeContrato={analyzeContrato}
             />

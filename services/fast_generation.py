@@ -15,28 +15,84 @@ from sqlalchemy.orm import Session
 OUTPUT_COLUMNS = [
     "Dia",
     "Refeição",
+    "Pão",
+    "Recheio 1",
+    "% Consumo Recheio 1",
+    "Recheio 2",
+    "% Consumo Recheio 2",
+    "Acompanhamento Café",
+    "Bebida Café",
+    "Fruta Café",
     "Prato Proteico Principal",
+    "% Consumo Principal",
     "Opção Proteica 2",
+    "% Consumo Opção 2",
     "Opção Proteica 3",
+    "% Consumo Opção 3",
+    "Arroz",
+    "Feijão",
     "Guarnição 1",
     "Guarnição 2",
+    "Salada Grãos",
     "Salada Crua",
     "Salada Cozida",
     "Salada Folhosa/Elaborada",
     "Sobremesa",
+    "Bebida",
+    "Fruta",
     "Tema Especial",
+    "Custo Gerencial (R$)",
 ]
 
 SLOT_BUCKETS = {
+    "Pão": "paes",
+    "Recheio 1": "recheios",
+    "Recheio 2": "recheios",
+    "Acompanhamento Café": "acompanhamentos_cafe",
+    "Bebida Café": "bebidas",
+    "Fruta Café": "frutas",
     "Prato Proteico Principal": "proteicos",
     "Opção Proteica 2": "proteicos",
     "Opção Proteica 3": "proteicos",
+    "Arroz": "arroz",
+    "Feijão": "feijao",
     "Guarnição 1": "guarnicoes",
     "Guarnição 2": "guarnicoes",
+    "Salada Grãos": "saladas_graos",
     "Salada Crua": "saladas_cruas",
     "Salada Cozida": "saladas_cozidas",
     "Salada Folhosa/Elaborada": "saladas_elaboradas",
     "Sobremesa": "sobremesas",
+    "Bebida": "bebidas",
+    "Fruta": "frutas",
+}
+
+PERCENT_COLUMNS = {
+    "% Consumo Recheio 1",
+    "% Consumo Recheio 2",
+    "% Consumo Principal",
+    "% Consumo Opção 2",
+    "% Consumo Opção 3",
+}
+
+BREAKFAST_FIELDS = {
+    "Pão",
+    "Recheio 1",
+    "% Consumo Recheio 1",
+    "Recheio 2",
+    "% Consumo Recheio 2",
+    "Acompanhamento Café",
+    "Bebida Café",
+    "Fruta Café",
+}
+
+MEAL_FIELDS = set(SLOT_BUCKETS) - {
+    "Pão",
+    "Recheio 1",
+    "Recheio 2",
+    "Acompanhamento Café",
+    "Bebida Café",
+    "Fruta Café",
 }
 
 REFEICAO_LABELS = {
@@ -89,12 +145,38 @@ def _clean_cell(value: Any) -> str:
     return text or "-"
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        text = str(value).replace("%", "").replace(",", ".").strip()
+        if not text or text == "-":
+            return default
+        return float(text)
+    except (TypeError, ValueError):
+        return default
+
+
 def _bucket_for(category: str, name: str) -> str:
     cat = _norm(category)
     nome = _norm(name)
+    if "pao" in cat or "pao" in nome or "broa" in nome:
+        return "paes"
+    if "recheio" in cat or "manteiga" in nome or "margarina" in nome or "ricota" in nome or "queijo" in nome:
+        return "recheios"
+    if "bebida" in cat or "suco" in nome or "cafe" in nome or "leite" in nome or "cha" in nome:
+        return "bebidas"
     if "sobremesa" in cat or "fruta" in cat or "doce" in cat:
+        if "fruta" in cat or any(fruit in nome for fruit in ("banana", "maca", "melao", "mamao", "melancia", "manga", "laranja")):
+            return "frutas"
         return "sobremesas"
+    if "cafe" in cat or "desjejum" in cat or "lanche" in cat or "bolo" in nome or "mingau" in nome or "cuscuz" in nome:
+        return "acompanhamentos_cafe"
+    if "arroz" in cat or "arroz" in nome:
+        return "arroz"
+    if "feij" in cat or "feij" in nome:
+        return "feijao"
     if "salada" in cat:
+        if "grao" in cat or "graos" in cat or "grao" in nome or "fradinho" in nome:
+            return "saladas_graos"
         if "coz" in cat or "cozid" in nome or "beterraba" in nome or "abobora" in nome or "chuchu" in nome:
             return "saladas_cozidas"
         if "elabor" in cat or "folh" in cat or "grao" in nome or "macarronese" in nome or "caprese" in nome:
@@ -124,8 +206,16 @@ def _catalog_snapshot(db: Session, empresa_id: str, max_per_bucket: int = 80) ->
     from database.models import FichaTecnica
 
     buckets: dict[str, list[Candidate]] = {
+        "paes": [],
+        "recheios": [],
+        "acompanhamentos_cafe": [],
+        "bebidas": [],
+        "frutas": [],
         "proteicos": [],
+        "arroz": [],
+        "feijao": [],
         "guarnicoes": [],
+        "saladas_graos": [],
         "saladas_cruas": [],
         "saladas_cozidas": [],
         "saladas_elaboradas": [],
@@ -164,6 +254,84 @@ def _candidate_for(bucket: list[Candidate], index: int) -> Optional[Candidate]:
     return bucket[index % len(bucket)]
 
 
+def _is_breakfast_ref(ref: str) -> bool:
+    norm = _norm(ref)
+    return norm in {"cafe manha", "cafe da manha", "desjejum", "lanche manha"}
+
+
+def _candidate_cost(catalog: dict[str, list[Candidate]], name: Any) -> float:
+    needle = _norm(name)
+    if not needle or needle == "-":
+        return 0.0
+    for items in catalog.values():
+        for item in items:
+            if _norm(item.nome) == needle or (item.codigo and _norm(item.codigo) == needle):
+                return float(item.custo or 0)
+    return 0.0
+
+
+def _apply_consumption_and_costs(row: dict[str, Any], catalog: dict[str, list[Candidate]], is_breakfast: bool) -> None:
+    if is_breakfast:
+        if row.get("Recheio 1", "-") != "-":
+            row["% Consumo Recheio 1"] = "70"
+        if row.get("Recheio 2", "-") != "-":
+            row["% Consumo Recheio 2"] = "30"
+        weighted_recheio = (
+            _candidate_cost(catalog, row.get("Recheio 1")) * (_safe_float(row.get("% Consumo Recheio 1")) / 100)
+            + _candidate_cost(catalog, row.get("Recheio 2")) * (_safe_float(row.get("% Consumo Recheio 2")) / 100)
+        )
+        fixed = sum(
+            _candidate_cost(catalog, row.get(col))
+            for col in ("Pão", "Acompanhamento Café", "Bebida Café", "Fruta Café")
+        )
+        row["Custo Gerencial (R$)"] = f"{fixed + weighted_recheio:.2f}"
+        return
+
+    protein_cols = ["Prato Proteico Principal", "Opção Proteica 2", "Opção Proteica 3"]
+    protein_items = [(col, row.get(col), _candidate_cost(catalog, row.get(col))) for col in protein_cols]
+    protein_items = [item for item in protein_items if _clean_cell(item[1]) != "-"]
+    if len(protein_items) >= 3:
+        ordered = sorted(protein_items, key=lambda item: item[2])
+        for col, (_, name, _) in zip(protein_cols, ordered):
+            row[col] = name
+        row["% Consumo Principal"] = "70"
+        row["% Consumo Opção 2"] = "20"
+        row["% Consumo Opção 3"] = "10"
+    elif len(protein_items) == 2:
+        ordered = sorted(protein_items, key=lambda item: item[2])
+        row["Prato Proteico Principal"] = ordered[0][1]
+        row["Opção Proteica 2"] = ordered[1][1]
+        row["% Consumo Principal"] = "80"
+        row["% Consumo Opção 2"] = "20"
+        row["% Consumo Opção 3"] = "0"
+        row["Opção Proteica 3"] = "-"
+    elif len(protein_items) == 1:
+        row["% Consumo Principal"] = "100"
+        row["% Consumo Opção 2"] = "0"
+        row["% Consumo Opção 3"] = "0"
+
+    protein_cost = (
+        _candidate_cost(catalog, row.get("Prato Proteico Principal")) * (_safe_float(row.get("% Consumo Principal")) / 100)
+        + _candidate_cost(catalog, row.get("Opção Proteica 2")) * (_safe_float(row.get("% Consumo Opção 2")) / 100)
+        + _candidate_cost(catalog, row.get("Opção Proteica 3")) * (_safe_float(row.get("% Consumo Opção 3")) / 100)
+    )
+    fixed_cols = [
+        "Arroz",
+        "Feijão",
+        "Guarnição 1",
+        "Guarnição 2",
+        "Salada Grãos",
+        "Salada Crua",
+        "Salada Cozida",
+        "Salada Folhosa/Elaborada",
+        "Sobremesa",
+        "Bebida",
+        "Fruta",
+    ]
+    fixed_cost = sum(_candidate_cost(catalog, row.get(col)) for col in fixed_cols)
+    row["Custo Gerencial (R$)"] = f"{fixed_cost + protein_cost:.2f}"
+
+
 def _bucket_candidates(catalog: dict[str, list[Candidate]], bucket_name: str) -> list[Candidate]:
     items = catalog.get(bucket_name, [])
     if items:
@@ -174,6 +342,12 @@ def _bucket_candidates(catalog: dict[str, list[Candidate]], bucket_name: str) ->
             + catalog.get("saladas_cozidas", [])
             + catalog.get("saladas_elaboradas", [])
         )
+    if bucket_name in {"arroz", "feijao"}:
+        return catalog.get("guarnicoes", [])
+    if bucket_name in {"frutas", "sobremesas"}:
+        return catalog.get("frutas", []) + catalog.get("sobremesas", [])
+    if bucket_name in {"paes", "recheios", "acompanhamentos_cafe"}:
+        return catalog.get("acompanhamentos_cafe", []) + catalog.get("guarnicoes", [])
     return items
 
 
@@ -254,21 +428,41 @@ def _llm_generate(
         "    {\n"
         '      "Dia": 1,\n'
         '      "Refeição": "Almoço",\n'
+        '      "Pão": "-",\n'
+        '      "Recheio 1": "-",\n'
+        '      "% Consumo Recheio 1": "-",\n'
+        '      "Recheio 2": "-",\n'
+        '      "% Consumo Recheio 2": "-",\n'
+        '      "Acompanhamento Café": "-",\n'
+        '      "Bebida Café": "-",\n'
+        '      "Fruta Café": "-",\n'
         '      "Prato Proteico Principal": "nome do prato",\n'
+        '      "% Consumo Principal": 70,\n'
         '      "Opção Proteica 2": "nome do prato",\n'
+        '      "% Consumo Opção 2": 20,\n'
         '      "Opção Proteica 3": "nome do prato",\n'
+        '      "% Consumo Opção 3": 10,\n'
+        '      "Arroz": "nome do prato",\n'
+        '      "Feijão": "nome do prato",\n'
         '      "Guarnição 1": "nome do prato",\n'
         '      "Guarnição 2": "nome do prato",\n'
+        '      "Salada Grãos": "nome do prato ou -",\n'
         '      "Salada Crua": "nome do prato",\n'
         '      "Salada Cozida": "nome do prato",\n'
         '      "Salada Folhosa/Elaborada": "nome do prato",\n'
         '      "Sobremesa": "nome do prato ou -",\n'
-        '      "Tema Especial": "tema ou -"\n'
+        '      "Bebida": "nome do prato ou -",\n'
+        '      "Fruta": "nome do prato ou -",\n'
+        '      "Tema Especial": "tema ou -",\n'
+        '      "Custo Gerencial (R$)": 0\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
         "Regras: gere todos os dias; evite repetir prato proteico principal em dias consecutivos; "
-        "mantenha opção vegetariana quando contrato exigir; use '-' só se não houver opção no catálogo."
+        "mantenha opção vegetariana quando contrato exigir; use '-' só se não houver opção no catálogo. "
+        "Para desjejum/café da manhã, preencha os campos Pão/Recheio/Acompanhamento Café/Bebida Café/Fruta Café "
+        "e deixe campos de almoço como '-'. Para almoço/jantar, faça o inverso. "
+        "Calibre % Consumo das opções para equilibrar custo: normalmente 70/20/10 ou 80/20/0."
         f"{repair_block}"
     )
     router = ModelRouter(
@@ -294,12 +488,21 @@ def _deterministic_rows(catalog: dict[str, list[Candidate]], dias: int, refeicoe
     for dia in range(1, dias + 1):
         for meal_idx, ref in enumerate(refeicoes):
             idx = (dia - 1) + meal_idx
+            is_breakfast = _is_breakfast_ref(ref)
             row: dict[str, Any] = {
                 "Dia": dia,
                 "Refeição": REFEICAO_LABELS.get(ref, ref.title()),
                 "Tema Especial": SPECIAL_THEMES[(dia - 1) % len(SPECIAL_THEMES)],
             }
+            for col in OUTPUT_COLUMNS:
+                row.setdefault(col, "-")
+            row["Dia"] = dia
+            row["Refeição"] = REFEICAO_LABELS.get(ref, ref.title())
             for col, bucket_name in SLOT_BUCKETS.items():
+                if is_breakfast and col not in BREAKFAST_FIELDS:
+                    continue
+                if not is_breakfast and col not in MEAL_FIELDS:
+                    continue
                 bucket = _bucket_candidates(catalog, bucket_name)
                 offset = idx
                 if col == "Opção Proteica 2":
@@ -310,6 +513,7 @@ def _deterministic_rows(catalog: dict[str, list[Candidate]], dias: int, refeicoe
                     offset = idx + 1
                 cand = _candidate_for(bucket, offset)
                 row[col] = cand.nome if cand else "-"
+            _apply_consumption_and_costs(row, catalog, is_breakfast)
             rows.append(row)
     return rows
 
@@ -344,6 +548,7 @@ def _validate_and_normalize(
     for dia in range(1, dias + 1):
         for ref in refeicoes:
             refeicao_label = REFEICAO_LABELS.get(ref, ref.title())
+            is_breakfast = _is_breakfast_ref(ref)
             key = (dia, _norm(refeicao_label))
             raw = by_key.get(key)
             if raw is None and len(refeicoes) == 1:
@@ -354,10 +559,16 @@ def _validate_and_normalize(
             row = {}
             fallback_row = fallback_by_key[key]
             for col in OUTPUT_COLUMNS:
+                if is_breakfast and col in MEAL_FIELDS:
+                    row[col] = "-"
+                    continue
+                if not is_breakfast and col in BREAKFAST_FIELDS:
+                    row[col] = "-"
+                    continue
                 value = raw.get(col)
                 if value in (None, ""):
                     value = fallback_row.get(col, "-")
-                    if col not in {"Tema Especial"}:
+                    if col not in {"Tema Especial", "Custo Gerencial (R$)", *PERCENT_COLUMNS}:
                         warnings.append(f"Campo {col} ausente no dia {dia}; preenchido automaticamente.")
                 value = _clean_cell(value)
                 if col in SLOT_BUCKETS and value != "-" and _norm(value) not in allowed_by_slot.get(col, set()):
@@ -369,6 +580,7 @@ def _validate_and_normalize(
                 row[col] = _clean_cell(value)
             row["Dia"] = str(dia)
             row["Refeição"] = refeicao_label
+            _apply_consumption_and_costs(row, catalog, is_breakfast)
             normalized.append(row)
 
     if len(normalized) != expected_count:
@@ -376,6 +588,8 @@ def _validate_and_normalize(
     for i in range(1, len(normalized)):
         prev = normalized[i - 1].get("Prato Proteico Principal")
         cur = normalized[i].get("Prato Proteico Principal")
+        if prev == "-" or cur == "-":
+            continue
         if prev and cur and _norm(prev) == _norm(cur):
             replacement = next(
                 (candidate.nome for candidate in _bucket_candidates(catalog, "proteicos") if _norm(candidate.nome) != _norm(prev)),
@@ -383,20 +597,30 @@ def _validate_and_normalize(
             )
             if replacement:
                 normalized[i]["Prato Proteico Principal"] = replacement
+                _apply_consumption_and_costs(normalized[i], catalog, False)
                 warnings.append(f"Proteico principal repetido entre linhas {i} e {i + 1}; substituído automaticamente.")
             else:
                 warnings.append(f"Proteico principal repetido entre linhas {i} e {i + 1}.")
     return normalized, warnings
 
 
-def _core_catalog_errors(catalog: dict[str, list[Candidate]]) -> list[str]:
+def _core_catalog_errors(catalog: dict[str, list[Candidate]], refeicoes: list[str]) -> list[str]:
     errors = []
-    if not catalog.get("proteicos"):
+    needs_meal = any(not _is_breakfast_ref(ref) for ref in refeicoes)
+    needs_breakfast = any(_is_breakfast_ref(ref) for ref in refeicoes)
+    if needs_meal and not catalog.get("proteicos"):
         errors.append("Nenhuma ficha proteica ativa encontrada para a empresa.")
-    if not catalog.get("guarnicoes"):
+    if needs_meal and not (catalog.get("guarnicoes") or catalog.get("arroz") or catalog.get("feijao")):
         errors.append("Nenhuma ficha de guarnição/acompanhamento ativa encontrada para a empresa.")
-    if not (catalog.get("saladas_cruas") or catalog.get("saladas_cozidas") or catalog.get("saladas_elaboradas")):
+    if needs_meal and not (
+        catalog.get("saladas_cruas")
+        or catalog.get("saladas_cozidas")
+        or catalog.get("saladas_elaboradas")
+        or catalog.get("saladas_graos")
+    ):
         errors.append("Nenhuma ficha de salada ativa encontrada para a empresa.")
+    if needs_breakfast and not (catalog.get("paes") or catalog.get("acompanhamentos_cafe")):
+        errors.append("Nenhuma ficha de desjejum/café da manhã ativa encontrada para a empresa.")
     return errors
 
 
@@ -485,7 +709,7 @@ def _persist_cardapio(
         day_cost = 0.0
         for row in day_rows:
             refeicao = _tipo_refeicao(row.get("Refeição", "Almoço"))
-            for ordem, col in enumerate(OUTPUT_COLUMNS[2:-1], start=1):
+            for ordem, col in enumerate(SLOT_BUCKETS.keys(), start=1):
                 nome = _clean_cell(row.get(col))
                 if nome == "-":
                     continue
@@ -549,7 +773,7 @@ def run_fast_generation(
         refeicoes_norm = refeicoes or ["almoco"]
         progress(45, "📚 Montando catálogo rápido de fichas técnicas...", "Gestor de Fichas Técnicas")
         catalog = _catalog_snapshot(db, empresa_id)
-        errors = _core_catalog_errors(catalog)
+        errors = _core_catalog_errors(catalog, refeicoes_norm)
         if errors:
             raise ValueError(" ".join(errors))
 
