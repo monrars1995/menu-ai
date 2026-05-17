@@ -1,4 +1,4 @@
-# Menu.AI v3.2.1 — Como iniciar
+# Menu.AI v3.4.0 — Como iniciar
 
 ## Stack suportada
 
@@ -14,7 +14,7 @@
 ## Pré-requisitos
 
 - Docker instalado e rodando
-- Chave de API da OpenRouter
+- Chave de API de pelo menos um provedor LLM: OpenAI, Gemini ou OpenRouter
 
 ---
 
@@ -22,14 +22,21 @@
 
 ### 1. Configurar a chave LLM no `.env`
 
-Abra o arquivo `.env` e configure a OpenRouter:
+Abra o arquivo `.env` e configure pelo menos um provedor LLM:
 
 ```bash
-OPENROUTER_API_KEY=sk-or-v1-SUA_CHAVE_AQUI
-OPENROUTER_DEFAULT_MODEL=queen-3.6
+OPENAI_API_KEY=sk-SUA_CHAVE_OPENAI
+GEMINI_API_KEY=SUA_CHAVE_GEMINI
+# opcional
+OPENROUTER_API_KEY=sk-or-v1-SUA_CHAVE_OPENROUTER
+MENUAI_DEFAULT_LLM_MODEL=openai-gpt-5.5
 ```
 
 Catálogo inicial da aplicação:
+- `openai-gpt-5.5` -> `openai/gpt-5.5`
+- `gemini-3.1-pro-preview` -> `gemini/gemini-3.1-pro-preview`
+- `gemini-3-flash-preview` -> `gemini/gemini-3-flash-preview`
+- `gemini-3.1-flash-lite` -> `gemini/gemini-3.1-flash-lite`
 - `queen-3.6` -> `qwen/qwen3.6-plus`
 - `glm-5-1` -> `z-ai/glm-5.1`
 - `kimi-k2.5` -> `moonshotai/kimi-k2.5`
@@ -126,7 +133,7 @@ docker compose down -v
 - `CORS_ORIGINS` explícita em deploy
 - `ALLOW_OPEN_REGISTRO=true` apenas quando necessário
 - A UI autenticada envia `Authorization: Bearer` em `gerar`/`upload`
-- O seletor `Modelo LLM` consome `GET /api/llm-models` e envia o id interno em `POST /api/gerar`
+- O seletor `Modelo LLM` consome `GET /api/llm-models`, persiste a escolha no navegador e envia o id interno em `POST /api/gerar`
 
 ## Migrações
 
@@ -139,7 +146,7 @@ docker compose exec app alembic revision --autogenerate -m "descricao da mudanca
 
 ## UI (`templates/index.html`)
 
-- O seletor de modelo usa OpenRouter como provider único.
+- O seletor de modelo usa OpenAI, Gemini e OpenRouter quando as respectivas chaves estão configuradas.
 - O modelo selecionado fica persistido no navegador.
 - Header e fluxo de geração usam o mesmo catálogo exposto pela API.
 

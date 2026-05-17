@@ -7,6 +7,8 @@ import { Cpu } from "lucide-react";
 interface LlmModel {
   id: string;
   label?: string;
+  provider?: string;
+  model_string?: string;
   slug?: string;
   description?: string;
   enabled: boolean;
@@ -79,7 +81,7 @@ export default function LlmPage() {
                   )}
                 </div>
                 <div className="mt-0.5 text-xs" style={{ color: "var(--text-tertiary)" }}>
-                  {m.id}{m.slug ? ` · ${m.slug}` : ""}
+                  {m.id}{m.provider ? ` · ${m.provider}` : ""}{m.model_string ? ` · ${m.model_string}` : m.slug ? ` · ${m.slug}` : ""}
                 </div>
                 {m.description && <div className="mt-1 text-xs" style={{ color: "var(--text-secondary)" }}>{m.description}</div>}
               </div>

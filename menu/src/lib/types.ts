@@ -186,8 +186,11 @@ export interface PaginatedResponse<T> {
 export interface LlmModel {
   id: string;
   label: string;
-  slug: string;
-  enabled: boolean;
+  provider?: string;
+  model_string?: string;
+  slug?: string;
+  description?: string;
+  enabled?: boolean;
 }
 
 export type Role = "super_admin" | "admin" | "nutricionista" | "gestor" | "visualizador";

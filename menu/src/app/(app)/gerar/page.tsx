@@ -7,6 +7,57 @@ import {
   useChatGenerator,
 } from "@/components/chat";
 import { ContractUpload } from "@/components/wizard/ContractUpload";
+import { Cpu } from "lucide-react";
+
+function LlmModelSelect({
+  value,
+  models,
+  loading,
+  onChange,
+}: {
+  value: string;
+  models: Array<{ id: string; label?: string; provider?: string; description?: string }>;
+  loading: boolean;
+  onChange: (modelId: string) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="inline-flex h-10 items-center gap-2 rounded-md border border-hairline bg-white px-3 text-xs text-ink-muted-48">
+        <Cpu size={14} />
+        Carregando modelos...
+      </div>
+    );
+  }
+  if (!models.length) {
+    return (
+      <div className="inline-flex h-10 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-xs text-red-700">
+        <Cpu size={14} />
+        Modelos indisponiveis
+      </div>
+    );
+  }
+
+  const selected = models.find((m) => m.id === value);
+
+  return (
+    <label className="flex min-w-0 items-center gap-2 rounded-md border border-hairline bg-white px-3 py-2 text-xs text-ink-muted-48">
+      <Cpu size={14} className="shrink-0" />
+      <span className="hidden shrink-0 sm:inline">Modelo IA</span>
+      <select
+        value={value || models[0].id}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-w-0 bg-transparent text-sm font-medium text-ink outline-none"
+        title={selected?.description || selected?.id}
+      >
+        {models.map((model) => (
+          <option key={model.id} value={model.id}>
+            {model.label || model.id} {model.provider ? `(${model.provider})` : ""}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 export default function GerarPage() {
   const {
@@ -25,12 +76,22 @@ export default function GerarPage() {
     handleNewGeneration,
     confirmHitl,
     sendChatMessage,
+    setLlmModel,
   } = useChatGenerator();
 
   const isWizardStart = state.phase === "welcome" || state.phase === "uploading";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-4 flex items-center justify-end">
+        <LlmModelSelect
+          value={state.llmModel}
+          models={state.llmModels}
+          loading={state.loadingLlmModels}
+          onChange={setLlmModel}
+        />
+      </div>
+
       {isWizardStart ? (
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-5xl space-y-8">

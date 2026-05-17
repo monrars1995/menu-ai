@@ -397,6 +397,12 @@ function ConfirmCard({
             {data.custoAlvo ? `R$ ${data.custoAlvo}/dia` : "Nao definido"}
           </p>
         </div>
+        {data.modeloLabel && (
+          <div className="rounded-lg bg-white/10 p-3">
+            <span className="text-white/50">Modelo IA:</span>
+            <p className="mt-0.5 font-medium text-white">{data.modeloLabel}</p>
+          </div>
+        )}
       </div>
 
       {data.restricoes && (

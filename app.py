@@ -27,7 +27,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.3.0"
+APP_VERSION = "3.4.0"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -371,7 +371,7 @@ async def info(
 
 @app.get("/api/llm-models")
 async def llm_models():
-    """Modelos OpenRouter disponíveis para geração (ids + rótulos)."""
+    """Modelos LLM disponíveis para geração (ids + rótulos)."""
     from pipeline.openrouter_models import api_models_payload
 
     if not _db_ok:
@@ -620,6 +620,16 @@ async def gerar_cardapio_com_upload(
         nome_cardapio=nome_cardapio,
         llm_model=llm_model,
     )
+
+    if _db_ok:
+        from pipeline.openrouter_models import assert_llm_model_allowed_for_generation
+        from database.connection import SessionLocal
+
+        db_chk = SessionLocal()
+        try:
+            assert_llm_model_allowed_for_generation(db_chk, gerar_body.llm_model)
+        finally:
+            db_chk.close()
 
     job_id = str(uuid.uuid4())[:8]
     job_state.jobs[job_id] = {

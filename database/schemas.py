@@ -429,7 +429,15 @@ class AprovacaoOut(AprovacaoCreate):
 # ============================================================
 # JOB AGENTE
 # ============================================================
-LlmModelId = Literal["queen-3.6", "glm-5-1", "kimi-k2.5"]
+LlmModelId = Literal[
+    "openai-gpt-5.5",
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+    "queen-3.6",
+    "glm-5-1",
+    "kimi-k2.5",
+]
 
 
 class GerarCardapioRequest(BaseModel):
@@ -450,7 +458,7 @@ class GerarCardapioRequest(BaseModel):
     nome_cardapio: Optional[str] = None
     llm_model: Optional[LlmModelId] = Field(
         default=None,
-        description="Modelo OpenRouter (id interno). Omitir usa OPENROUTER_DEFAULT_MODEL ou queen-3.6.",
+        description="Modelo LLM (id interno). Omitir usa MENUAI_DEFAULT_LLM_MODEL ou openai-gpt-5.5.",
     )
 
 

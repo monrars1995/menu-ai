@@ -52,7 +52,7 @@ def processar_mensagem_chat_bg(sessao_id: str):
         # Enviar para o LLM
         empresa_id = sessao.usuario.empresa_id if sessao.usuario else None
         
-        # Podemos ler o modelo do job (se houver) ou deixar o padrão (OpenRouter fallback)
+        # Podemos ler o modelo do job (se houver) ou deixar o padrão multi-provider.
         model_id = None
         if sessao.job and sessao.job.parametros_json:
             params = sessao.job.parametros_json

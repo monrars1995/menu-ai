@@ -36,7 +36,7 @@ from routers.empresas import router as empresas_router  # noqa: E402
 from routers.fichas_tecnicas import router as fichas_router  # noqa: E402
 from routers.ingredientes import router as ingredientes_router  # noqa: E402
 
-APP_VERSION = "3.2.0"
+APP_VERSION = "3.4.0"
 ADMIN_DIR = Path(__file__).resolve().parent
 ADMIN_STATIC_DIR = ADMIN_DIR / "static"
 

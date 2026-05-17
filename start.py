@@ -10,6 +10,19 @@ from pathlib import Path
 BASE = Path(__file__).parent
 
 
+def _has_real_llm_key(content: str) -> bool:
+    for line in content.splitlines():
+        if not line or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() not in {"OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY"}:
+            continue
+        value = value.strip()
+        if value and "sua_chave" not in value and "SUA_CHAVE" not in value:
+            return True
+    return False
+
+
 def check_env():
     env_file = BASE / ".env"
     example_file = BASE / ".env.example"
@@ -21,29 +34,33 @@ def check_env():
             print("\n⚠️  Arquivo .env criado a partir do exemplo.")
         else:
             env_file.write_text(
+                "OPENAI_API_KEY=sk-sua_chave_openai\n"
+                "GEMINI_API_KEY=sua_chave_gemini\n"
                 "OPENROUTER_API_KEY=sk-or-v1-sua_chave_aqui\n"
-                "OPENROUTER_DEFAULT_MODEL=queen-3.6\n"
+                "MENUAI_DEFAULT_LLM_MODEL=openai-gpt-5.5\n"
                 "DATABASE_URL=postgresql+psycopg2://menuai:menuai123@127.0.0.1:5432/menuai_db\n"
                 "SUPABASE_URL=https://seu-projeto.supabase.co\n"
             )
 
     content = env_file.read_text()
-    if "sua_chave" in content:
+    if not _has_real_llm_key(content):
         print("\n" + "=" * 60)
         print("  CONFIGURAÇÃO NECESSÁRIA")
         print("=" * 60)
-        print("  Edite o arquivo .env e configure o OpenRouter:")
+        print("  Edite o arquivo .env e configure pelo menos um provedor LLM:")
         print()
+        print("  OPENAI_API_KEY=sk-...")
+        print("  GEMINI_API_KEY=...")
         print("  OPENROUTER_API_KEY=sk-or-v1-...")
-        print("  OPENROUTER_DEFAULT_MODEL=queen-3.6")
-        print("  IDs disponíveis: queen-3.6, glm-5-1, kimi-k2.5")
+        print("  MENUAI_DEFAULT_LLM_MODEL=openai-gpt-5.5")
+        print("  IDs disponíveis: openai-gpt-5.5, gemini-3.1-pro-preview, gemini-3-flash-preview, gemini-3.1-flash-lite, queen-3.6, glm-5-1, kimi-k2.5")
         print()
         print(f"  Arquivo: {env_file}")
         print("=" * 60)
         input("\n  Pressione Enter depois de configurar o .env...")
         # Recarrega
         content = env_file.read_text()
-        if "sua_chave" in content:
+        if not _has_real_llm_key(content):
             print("\n❌ Chave ainda não configurada. Encerrando.")
             sys.exit(1)
 

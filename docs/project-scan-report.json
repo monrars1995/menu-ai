@@ -7,7 +7,7 @@
   },
   "project_identity": {
     "name": "Menu.AI",
-    "version": "3.3.0",
+    "version": "3.4.0",
     "description": "Sistema inteligente de planejamento de cardápios para refeições coletivas com agentes LLM",
     "type": "backend",
     "secondary_types": ["web"],
@@ -40,7 +40,7 @@
         "Agente de Compras e Gestão de Insumos",
         "Exportador e Consolidador de Cardápios"
       ],
-      "llm_providers": ["OpenRouter (primary)", "Groq", "OpenAI", "Anthropic", "Qwen", "Ollama (legacy)"]
+      "llm_providers": ["OpenAI", "Gemini", "OpenRouter"]
     },
     "multi_tenant": true,
     "tenant_key": "empresa_id"

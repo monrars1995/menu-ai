@@ -1,6 +1,6 @@
 # Menu.AI — Documentação Técnica do Projeto
 
-> **Versão:** 3.3.0 | **Tipo:** Backend API + Frontends Web | **Framework:** FastAPI + Next.js
+> **Versão:** 3.4.0 | **Tipo:** Backend API + Frontends Web | **Framework:** FastAPI + Next.js
 > **Scan:** Deep Scan — 2026-05-16
 
 ---
@@ -397,4 +397,4 @@ docker compose logs -f
 ---
 
 *Gerado automaticamente pelo BMad Document Project — Deep Scan*
-*Data: 2026-05-16 | Versão: 3.3.0*
+*Data: 2026-05-16 | Versão: 3.4.0*

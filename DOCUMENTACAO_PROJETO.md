@@ -1,6 +1,6 @@
 # Menu.AI — Documentação do Projeto
 
-> **Versão API:** 3.3.0 | **Framework:** FastAPI + Next.js | **IA:** LiteLLM + OpenRouter
+> **Versão API:** 3.4.0 | **Framework:** FastAPI + Next.js | **IA:** LiteLLM + OpenAI/Gemini/OpenRouter
 
 Documento de referência do repositório **Menu.AI**: arquitetura, operação, dados, API e pipeline de IA.
 
@@ -22,9 +22,9 @@ A documentação técnica detalhada está em **[docs/index.md](docs/index.md)**,
 | Item | Descrição |
 |------|-----------|
 | **Nome** | Menu.AI |
-| **Versão API** | 3.3.0 |
+| **Versão API** | 3.4.0 |
 | **Propósito** | API FastAPI multi-tenant para planejamento inteligente de cardápios coletivos |
-| **LLM** | OpenRouter via LiteLLM (7 agentes sequenciais) |
+| **LLM** | OpenAI, Gemini e OpenRouter via LiteLLM (7 agentes sequenciais) |
 | **Auth** | Supabase (JWKS/ES256) + fallback legado (HS256) |
 | **Frontends** | Menu (Next.js :3000) + Admin (Next.js :8001) |
 

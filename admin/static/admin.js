@@ -490,7 +490,7 @@ async function loadLlmModels() {
     const sub = document.createElement("div");
     sub.className = "muted";
     sub.style.fontSize = "0.82rem";
-    sub.textContent = `${m.id}${m.slug ? ` · ${m.slug}` : ""}`;
+    sub.textContent = `${m.id}${m.provider ? ` · ${m.provider}` : ""}${m.model_string ? ` · ${m.model_string}` : m.slug ? ` · ${m.slug}` : ""}`;
     info.appendChild(title);
     info.appendChild(sub);
     if (m.description) {

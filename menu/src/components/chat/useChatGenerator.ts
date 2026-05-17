@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import api, { API_BASE } from "@/lib/api";
-import type { Contrato, ContratoAnalise, Cardapio } from "@/lib/types";
+import type { Contrato, ContratoAnalise, Cardapio, LlmModel } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,6 +56,7 @@ export interface ConfirmData {
   custoAlvo: string;
   restricoes: string;
   contratoNome: string;
+  modeloLabel?: string;
 }
 
 export interface ResultData {
@@ -76,6 +77,9 @@ export interface ChatState {
   refeicoes: string[];
   custoAlvo: string;
   restricoes: string;
+  llmModel: string;
+  llmModels: LlmModel[];
+  loadingLlmModels: boolean;
   jobId: string | null;
   sessaoId: string | null;
   cardapioId: string | null;
@@ -85,6 +89,7 @@ export interface ChatState {
 }
 
 const DEFAULT_REFEICOES = ["almoco", "jantar"];
+const LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -106,6 +111,9 @@ export function useChatGenerator() {
     refeicoes: DEFAULT_REFEICOES,
     custoAlvo: "",
     restricoes: "",
+    llmModel: "",
+    llmModels: [],
+    loadingLlmModels: true,
     jobId: null,
     sessaoId: null,
     cardapioId: null,
@@ -132,6 +140,32 @@ export function useChatGenerator() {
       })
       .catch(() => {
         setState((s) => ({ ...s, loadingContratos: false }));
+      });
+
+    api.llmModels()
+      .then((payload) => {
+        const models = (payload.models || []) as LlmModel[];
+        const defaultModel = models.length ? String(payload.default || models[0]?.id || "") : "";
+        const savedModel =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem(LLM_MODEL_STORAGE_KEY)
+            : null;
+        const selected =
+          savedModel && models.some((m) => m.id === savedModel)
+            ? savedModel
+            : defaultModel;
+        if (selected && typeof window !== "undefined") {
+          window.localStorage.setItem(LLM_MODEL_STORAGE_KEY, selected);
+        }
+        setState((s) => ({
+          ...s,
+          llmModels: models,
+          llmModel: selected,
+          loadingLlmModels: false,
+        }));
+      })
+      .catch(() => {
+        setState((s) => ({ ...s, loadingLlmModels: false }));
       });
 
     // Welcome message
@@ -276,6 +310,7 @@ export function useChatGenerator() {
         refeicoes: s.refeicoes,
         target_custo_total: s.custoAlvo ? parseFloat(s.custoAlvo) : undefined,
         restricoes_usuario: s.restricoes || undefined,
+        llm_model: s.llmModel || undefined,
       })
       .then((res) => {
         const { job_id, contrato_id, contrato_nome, novo_contrato } = res;
@@ -384,6 +419,10 @@ export function useChatGenerator() {
         custoAlvo: s.custoAlvo,
         restricoes: value,
         contratoNome,
+        modeloLabel:
+          s.llmModels.find((m) => m.id === s.llmModel)?.label ||
+          s.llmModel ||
+          undefined,
       };
       addAgentMessage(
         "confirm",
@@ -426,6 +465,7 @@ export function useChatGenerator() {
         : undefined,
       restricoes_usuario: s.restricoes || undefined,
       refeicoes: s.refeicoes,
+      llm_model: s.llmModel || undefined,
     };
 
     api.gerar
@@ -607,6 +647,14 @@ export function useChatGenerator() {
     );
   }
 
+  function setLlmModel(modelId: string) {
+    if (!modelId) return;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LLM_MODEL_STORAGE_KEY, modelId);
+    }
+    setState((s) => ({ ...s, llmModel: modelId }));
+  }
+
   function confirmHitl(confirm: boolean, ajustes?: string) {
     const s = stateRef.current!;
     if (!s.jobId) return;
@@ -671,6 +719,7 @@ export function useChatGenerator() {
     handleAdjust,
     startGeneration,
     handleNewGeneration,
+    setLlmModel,
     confirmHitl,
     sendChatMessage,
   };

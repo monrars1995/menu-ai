@@ -1,10 +1,14 @@
 """
-Catálogo de Modelos LLM (Menu.AI) — OpenRouter centralizado.
+Catálogo de Modelos LLM (Menu.AI).
 
 Delega para o sistema em llm_providers.py e mantém compatibilidade
 com imports legados do projeto.
 
 Modelos suportados:
+- openai-gpt-5.5
+- gemini-3.1-pro-preview
+- gemini-3-flash-preview
+- gemini-3.1-flash-lite
 - queen-3.6
 - glm-5-1
 - kimi-k2.5
@@ -23,6 +27,7 @@ from pipeline.llm_providers import (
     allowed_llm_model_ids as _allowed_ids,
     api_models_payload as _api_payload,
     get_default_model_id as _default_id,
+    get_effective_default_model_id as _effective_default_id,
     get_model_entry as _get_entry,
     get_model_label as _get_label,
     get_model_string as _get_string,
@@ -35,7 +40,7 @@ from pipeline.llm_providers import (
 # ============================================================
 
 # Constante legada
-DEFAULT_LLM_MODEL_ID = "queen-3.6"
+DEFAULT_LLM_MODEL_ID = "openai-gpt-5.5"
 
 # Variáveis de env para override (mantidas para compatibilidade)
 _ENV_SLUG_QUEEN = "OPENROUTER_SLUG_QUEEN_36"
@@ -54,7 +59,7 @@ def allowed_llm_model_ids() -> List[str]:
 
 def effective_default_model_id() -> str:
     """Default para POST/UI quando `llm_model` está ausente."""
-    return _default_id()
+    return _effective_default_id()
 
 
 def effective_default_model_id_resolved(db: Optional["Session"]) -> str:
@@ -178,6 +183,11 @@ def assert_llm_model_allowed_for_generation(db: "Session", model_id: Optional[st
     from fastapi import HTTPException
     
     mid = (model_id or "").strip() or effective_default_model_id()
+    if mid not in _ID_TO_ENTRY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modelo LLM inválido: {mid}. Use um de: {list(_ID_TO_ENTRY.keys())}",
+        )
     if mid not in allowed_llm_model_ids():
         return
     if not is_llm_model_enabled_in_db(db, mid):
@@ -211,8 +221,7 @@ def api_models_payload(
     
     if db is None:
         models = payload.get("models", [])
-        if include_enabled_flag:
-            models = [{**m, "enabled": True} for m in models]
+        models = [{**m, "enabled": True} for m in models]
         payload["models"] = models
     else:
         emap = _enabled_map_from_db(db)
@@ -223,8 +232,7 @@ def api_models_payload(
             if only_enabled and not en:
                 continue
             item = dict(m)
-            if include_enabled_flag:
-                item["enabled"] = en
+            item["enabled"] = en
             models.append(item)
         payload["models"] = models
     

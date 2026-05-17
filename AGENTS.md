@@ -24,10 +24,11 @@ Detalhes e Docker: ver `INICIAR.md`.
 | `DEMO_GERAR_SEM_AUTH` | `true` = endpoints de geração aceitam pedidos sem JWT (só para demo). |
 | `ALLOW_OPEN_REGISTRO` | `true` = `POST /api/auth/registro` ativo. |
 | `CREATE_ALL_ON_START` | `true` (default em DEBUG) = `criar_tabelas()`; em produção usar **`alembic upgrade head`** e tipicamente `false`. |
-| `OPENROUTER_API_KEY` | **Produção:** chave em [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys); LiteLLM usa modelos `openrouter/...`. Sem esta chave (e sem legacy), a geração falha ao iniciar o worker. |
-| `OPENROUTER_DEFAULT_MODEL` | Id interno opcional (`queen-3.6`, `glm-5-1`, `kimi-k2.5`) quando o pedido não envia `llm_model`. |
-| `OPENROUTER_SLUG_*` | Overrides opcionais dos slugs OpenRouter — ver `.env.example`. |
-| `MENUAI_LLM_LEGACY` | `true` = cadeia antiga Groq/OpenAI/Anthropic/Qwen/Ollama (só dev); ignora seleção OpenRouter da UI. |
+| `OPENAI_API_KEY` | Habilita modelos diretos OpenAI via LiteLLM; default recomendado `openai-gpt-5.5`. |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Habilita modelos diretos Gemini via LiteLLM. |
+| `OPENROUTER_API_KEY` | Habilita modelos OpenRouter (`queen-3.6`, `glm-5-1`, `kimi-k2.5`). |
+| `MENUAI_DEFAULT_LLM_MODEL` | Id interno opcional quando o pedido não envia `llm_model`; default `openai-gpt-5.5`. |
+| `OPENROUTER_DEFAULT_MODEL` | Legado; ainda aceito se `MENUAI_DEFAULT_LLM_MODEL` estiver vazio. |
 | `MENUAI_APP_TITLE` / `OPENROUTER_HTTP_REFERER` | Opcional; headers de atribuição OpenRouter. |
 | `FICHAS_DB_STATS_TTL` | Segundos de cache em memória para `/api/info` e mensagens de progresso (fichas SQL). |
 | `MENUAI_FICHAS_IMPORT_XLSX` | Caminho do `.xlsx` apenas para `seed_data.py` (importação inicial; não usado em runtime). |
@@ -47,7 +48,7 @@ Detalhes e Docker: ver `INICIAR.md`.
 - `services/job_state.py` — dicionário de jobs em memória.
 - `services/fichas_db_stats.py` — contagens e categorias a partir de `FichaTecnica` / `Ingrediente` (cache TTL).
 - `services/receitas_stats.py` — *shim* legado que reexporta `fichas_db_stats` (evita imports antigos a falharem).
-- `pipeline/openrouter_models.py` — catálogo OpenRouter (ids UI ↔ slug); `GET /api/llm-models`.
+- `pipeline/llm_providers.py` / `pipeline/openrouter_models.py` — catálogo LLM multi-provider; `GET /api/llm-models`.
 - `pipeline/orchestrator.py` — configura contexto; `run()` delega a `run_lite_pipeline`.
 - `tools/` — ferramentas LLM (`compat.py` prefere `langchain_core`).
 

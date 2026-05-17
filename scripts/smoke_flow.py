@@ -79,8 +79,8 @@ def main() -> int:
     else:
         os.environ["ALLOW_OPEN_REGISTRO"] = "true"
 
-    if not (os.getenv("OPENROUTER_API_KEY") or "").strip():
-        raise RuntimeError("Configure OPENROUTER_API_KEY para executar scripts/smoke_flow.py.")
+    if not any((os.getenv(k) or "").strip() for k in ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY")):
+        raise RuntimeError("Configure OPENAI_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY ou OPENROUTER_API_KEY para executar scripts/smoke_flow.py.")
 
     from seed_data import TEST_EMPRESA_ID
 
@@ -107,6 +107,7 @@ def main() -> int:
     assert r.status_code == 200, r.text
     lm = r.json()
     assert lm.get("models") and len(lm["models"]) >= 1, lm
+    smoke_model = lm.get("default") or lm["models"][0]["id"]
 
     if full_auth:
         suffix = uuid.uuid4().hex[:8]
@@ -144,13 +145,13 @@ def main() -> int:
         r = requests.post(
             f"{base_url}/api/gerar",
             headers=headers,
-            json={"dias": 1, "restricoes_usuario": "smoke", "llm_model": "glm-5-1"},
+            json={"dias": 1, "restricoes_usuario": "smoke", "llm_model": smoke_model},
             timeout=30,
         )
     else:
         r = requests.post(
             f"{base_url}/api/gerar",
-            json={"dias": 1, "restricoes_usuario": "smoke", "llm_model": "glm-5-1"},
+            json={"dias": 1, "restricoes_usuario": "smoke", "llm_model": smoke_model},
             timeout=30,
         )
         if r.status_code in (400, 401, 403) and not demo_sem_auth:
@@ -169,7 +170,7 @@ def main() -> int:
     assert st.status_code == 200, st.text
     cfg = st.json().get("config") or {}
     assert cfg.get("empresa_id") == eid, cfg
-    assert cfg.get("llm_model") == "glm-5-1", cfg
+    assert cfg.get("llm_model") == smoke_model, cfg
 
     _check_job_db(job_id, eid)
 

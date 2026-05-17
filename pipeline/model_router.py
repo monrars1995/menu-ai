@@ -1,13 +1,13 @@
 """
-Menu.AI — Model Router com Fallback Automático (OpenRouter)
+Menu.AI — Model Router com Fallback Automático.
 
-Camada de resiliência que tenta múltiplos modelos OpenRouter em sequência.
+Camada de resiliência que tenta múltiplos modelos/provedores em sequência.
 Se o modelo primário falhar (timeout, rate limit, erro 5xx),
 tenta automaticamente o próximo na cadeia de fallback.
 
 Uso:
     from pipeline.model_router import ModelRouter
-    router = ModelRouter(model_id="gpt-4.1", job_id="abc123")
+    router = ModelRouter(model_id="openai-gpt-5.5", job_id="abc123")
     result = router.call(messages=..., tools=...)
 """
 from __future__ import annotations
@@ -70,7 +70,7 @@ class ModelRouter:
 
     Encapsula a lógica de:
     - Resolução de modelo (id interno → config completa via llm_providers)
-    - Fallback automático entre modelos OpenRouter
+    - Fallback automático entre provedores/modelos disponíveis
     - Registro de audit log para cada tentativa
     """
 
@@ -82,9 +82,9 @@ class ModelRouter:
         step_label: Optional[str] = None,
         step_index: Optional[int] = None,
     ):
-        from pipeline.llm_providers import get_default_model_id, get_fallback_chain
+        from pipeline.llm_providers import get_effective_default_model_id, get_fallback_chain
 
-        self.model_id = (model_id or "").strip() or get_default_model_id()
+        self.model_id = (model_id or "").strip() or get_effective_default_model_id()
         self.job_id = job_id
         self.empresa_id = empresa_id
         self.step_label = step_label

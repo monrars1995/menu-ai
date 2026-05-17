@@ -1,6 +1,6 @@
-# Menu.AI v3.2.1
+# Menu.AI v3.4.0
 
-Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, PostgreSQL e OpenRouter.
+Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, PostgreSQL, OpenAI, Gemini e OpenRouter.
 
 ## Stack suportada
 
@@ -9,8 +9,12 @@ Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, Pos
 - Banco: PostgreSQL em container
 - Banco cloud suportado: Supabase Postgres
 - Vetor: Supabase pgvector
-- LLM gateway: OpenRouter via LiteLLM
+- LLM gateway: OpenAI, Gemini e OpenRouter via LiteLLM
 - Modelos iniciais:
+  - `openai-gpt-5.5` -> `openai/gpt-5.5`
+  - `gemini-3.1-pro-preview` -> `gemini/gemini-3.1-pro-preview`
+  - `gemini-3-flash-preview` -> `gemini/gemini-3-flash-preview`
+  - `gemini-3.1-flash-lite` -> `gemini/gemini-3.1-flash-lite`
   - `queen-3.6` -> `qwen/qwen3.6-plus`
   - `glm-5-1` -> `z-ai/glm-5.1`
   - `kimi-k2.5` -> `moonshotai/kimi-k2.5`
@@ -18,7 +22,7 @@ Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, Pos
 ## Início rápido
 
 1. Configure `.env` a partir de `.env.example`.
-2. Defina `OPENROUTER_API_KEY`.
+2. Defina pelo menos uma chave LLM: `OPENAI_API_KEY`, `GEMINI_API_KEY`/`GOOGLE_API_KEY` ou `OPENROUTER_API_KEY`.
 3. Se for usar Supabase, configure `SUPABASE_DB_URL` e as variáveis de embeddings.
 4. Execute `./setup.sh` ou `docker compose up -d --build`.
 5. Abra `http://localhost:8000` e `http://localhost:8001`.

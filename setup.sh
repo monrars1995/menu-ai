@@ -12,7 +12,7 @@ error() { echo -e "${RED}✗ $1${NC}"; exit 1; }
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
-echo "║     Menu.AI v3.2.0 — Setup Docker Desktop           ║"
+echo "║     Menu.AI v3.4.0 — Setup Docker Desktop           ║"
 echo "╚══════════════════════════════════════════════════════╝"
 
 step "Validando Docker Desktop"
@@ -25,8 +25,8 @@ if [ ! -f ".env" ]; then
   warn ".env criado a partir do exemplo."
 fi
 
-if ! grep -qE "^OPENROUTER_API_KEY=.+" .env 2>/dev/null; then
-  warn "OPENROUTER_API_KEY não configurada no .env."
+if ! grep -qE "^(OPENAI_API_KEY|GEMINI_API_KEY|GOOGLE_API_KEY|OPENROUTER_API_KEY)=.+" .env 2>/dev/null; then
+  warn "Nenhuma chave LLM configurada no .env (OPENAI_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY ou OPENROUTER_API_KEY)."
 fi
 
 if grep -qE "^SUPABASE_DB_URL=postgres" .env 2>/dev/null; then
