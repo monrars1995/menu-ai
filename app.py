@@ -656,7 +656,11 @@ async def stream_job(request: Request, job_id: str, usuario: Optional[Usuario] =
         return StreamingResponse(
             once_error(),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     async def gen():
@@ -673,7 +677,11 @@ async def stream_job(request: Request, job_id: str, usuario: Optional[Usuario] =
     return StreamingResponse(
         gen(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

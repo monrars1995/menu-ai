@@ -98,6 +98,8 @@ export const api = {
     update: (id: string, data: object) => request(`/api/cardapios/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
     aprovar: (id: string, status: string, comentario?: string) =>
       request(`/api/cardapios/${id}/aprovacao`, { method: "POST", body: JSON.stringify({ cardapio_id: id, status, comentario }) }),
+    publicar: (id: string) =>
+      request(`/api/cardapios/${id}/publicar`, { method: "POST" }),
     exportar: (id: string, formato: string) => `${API_BASE}/api/cardapios/${id}/exportar?formato=${formato}`,
     download: (id: string, formato: string) => {
       const url = `${API_BASE}/api/cardapios/${id}/exportar?formato=${formato}`;

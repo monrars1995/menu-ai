@@ -29,7 +29,13 @@ export default function CardapioDetailPage() {
   async function handleApproval(status: string, comment?: string) {
     setActionLoading(status);
     try {
-      await api.cardapios.aprovar(id, status, comment);
+      if (status === "publicado") {
+        await api.cardapios.publicar(id);
+      } else if (status === "em_revisao") {
+        await api.cardapios.aprovar(id, "solicitado_revisao", comment);
+      } else {
+        await api.cardapios.aprovar(id, status, comment);
+      }
       setCardapio(await api.cardapios.get(id));
     } catch (e: any) { alert(e.message || "Erro na aprovação"); }
     setActionLoading(null);

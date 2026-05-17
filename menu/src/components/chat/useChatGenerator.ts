@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import api from "@/lib/api";
+import api, { API_BASE } from "@/lib/api";
 import type { Contrato, ContratoAnalise, Cardapio, LlmModel } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -176,6 +176,8 @@ function getPerguntaRestricoes(analise: ContratoAnalise | null): string {
 
 export function useChatGenerator() {
   const eventSourceRef = useRef<EventSource | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const streamRetryCountRef = useRef<Record<string, number>>({});
 
   // Refs to avoid stale closures in SSE callbacks
   const stateRef = useRef<ChatState | null>(null);
@@ -261,6 +263,7 @@ export function useChatGenerator() {
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) eventSourceRef.current.close();
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
 
@@ -310,7 +313,11 @@ export function useChatGenerator() {
         if (msgs[i].role === "agent") { idx = i; break; }
       }
       if (idx === -1) return s;
-      msgs[idx] = { ...msgs[idx], ...updater(msgs[idx]) };
+      const patch = updater(msgs[idx]);
+      if (!patch || Object.keys(patch).length === 0) return s;
+      const hasChange = Object.entries(patch).some(([k, v]) => (msgs[idx] as any)[k] !== v);
+      if (!hasChange) return s;
+      msgs[idx] = { ...msgs[idx], ...patch };
       return { ...s, messages: msgs };
     });
   }
@@ -319,12 +326,33 @@ export function useChatGenerator() {
     id: string,
     updater: (msg: ChatMessage) => Partial<ChatMessage>
   ) {
-    setState((s) => ({
-      ...s,
-      messages: s.messages.map((msg) =>
-        msg.id === id ? { ...msg, ...updater(msg) } : msg
-      ),
-    }));
+    setState((s) => {
+      let changed = false;
+      const nextMessages = s.messages.map((msg) => {
+        if (msg.id !== id) return msg;
+        const patch = updater(msg);
+        if (!patch || Object.keys(patch).length === 0) return msg;
+        const hasChange = Object.entries(patch).some(([k, v]) => (msg as any)[k] !== v);
+        if (!hasChange) return msg;
+        changed = true;
+        return { ...msg, ...patch };
+      });
+      return changed ? { ...s, messages: nextMessages } : s;
+    });
+  }
+
+  function shouldUsePollingTransport(): boolean {
+    const forced = (process.env.NEXT_PUBLIC_STREAM_TRANSPORT || "").trim().toLowerCase();
+    if (forced === "polling") return true;
+    if (forced === "sse") return false;
+    return /railway\.app/i.test(API_BASE);
+  }
+
+  function clearPollTimer() {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
   }
 
   function pipelineStepFromProgress(progress: number): number {
@@ -403,6 +431,58 @@ export function useChatGenerator() {
       preview: buildCardapioPreview(cardapio),
       warnings: validationWarnings(cardapio),
     };
+  }
+
+  function resolveGenerationResult(jobId: string) {
+    api.cardapios
+      .list(`job_id=${jobId}`)
+      .then(async (r) => {
+        const s = stateRef.current!;
+        const item = r.items?.[0] as Cardapio | undefined;
+        let detailed: Cardapio | null = item || null;
+        if (item?.id) {
+          try {
+            detailed = (await api.cardapios.get(item.id)) as Cardapio;
+          } catch {
+            detailed = item;
+          }
+        }
+        const resultData: ResultData = detailed
+          ? resultDataFromCardapio(jobId, detailed)
+          : item
+          ? resultDataFromCardapio(jobId, item)
+          : {
+              jobId,
+              cardapioId: "",
+              nome: "Cardapio",
+              numDias: s.dias,
+              custoMedioDia: 0,
+            };
+        setState((prev) => ({
+          ...prev,
+          phase: "result",
+          loading: false,
+          cardapioId: item?.id || null,
+        }));
+        addAgentMessage(
+          "result",
+          "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.",
+          { resultData }
+        );
+      })
+      .catch(() => {
+        const s = stateRef.current!;
+        setState((prev) => ({ ...prev, phase: "result", loading: false }));
+        addAgentMessage("result", "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.", {
+          resultData: {
+            jobId,
+            cardapioId: "",
+            nome: "Cardapio",
+            numDias: s.dias,
+            custoMedioDia: 0,
+          },
+        });
+      });
   }
 
   // ---------------------------------------------------------------------------
@@ -727,7 +807,12 @@ export function useChatGenerator() {
       .then((res) => {
         const jobId = res.job_id as string;
         setState((prev) => ({ ...prev, jobId }));
-        connectStream(jobId, skipContractAnalysis);
+        clearPollTimer();
+        if (shouldUsePollingTransport()) {
+          pollJobStatus(jobId, skipContractAnalysis);
+        } else {
+          connectStream(jobId, skipContractAnalysis);
+        }
 
         // Criar sessão de chat vinculada ao job
         api.chat.criarSessao(jobId).then((sessao) => {
@@ -743,66 +828,73 @@ export function useChatGenerator() {
       });
   }
 
+  function pollJobStatus(jobId: string, skipContractAnalysis = false) {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    clearPollTimer();
+
+    const tick = () => {
+      api.gerar
+        .status(jobId)
+        .then((snapshot) => {
+          const progress = Number(snapshot?.progress ?? 0) || 0;
+          const status = String(snapshot?.status || "");
+          const erro = snapshot?.erro || snapshot?.error;
+
+          updateLastAgentMessage((msg) => {
+            const updates: Partial<ChatMessage> = {
+              pipelineProgress: progress,
+              pipelineStep: pipelineStepFromProgressWithContext(progress, skipContractAnalysis),
+            };
+            if (erro) {
+              updates.type = "error";
+              updates.content = String(erro);
+              updates.erro = String(erro);
+            }
+            return updates;
+          });
+
+          if (status === "aguardando_confirmacao") {
+            setState((s) => ({ ...s, phase: "hitl-confirm" }));
+          } else if (status === "concluido") {
+            clearPollTimer();
+            resolveGenerationResult(jobId);
+            return;
+          } else if (status === "erro") {
+            clearPollTimer();
+            setState((s) => ({ ...s, phase: "error", loading: false }));
+            if (erro) addAgentMessage("error", String(erro));
+            return;
+          }
+
+          pollTimerRef.current = setTimeout(tick, 2500);
+        })
+        .catch(() => {
+          pollTimerRef.current = setTimeout(tick, 3000);
+        });
+    };
+
+    tick();
+  }
+
   function connectStream(jobId: string, skipContractAnalysis = false) {
     if (eventSourceRef.current) eventSourceRef.current.close();
 
     const es = new EventSource(api.gerar.streamUrl(jobId));
 
     function finishSuccess() {
-      api.cardapios
-        .list(`job_id=${jobId}`)
-        .then(async (r) => {
-          const s = stateRef.current!;
-          const item = r.items?.[0] as Cardapio | undefined;
-          let detailed: Cardapio | null = item || null;
-          if (item?.id) {
-            try {
-              detailed = (await api.cardapios.get(item.id)) as Cardapio;
-            } catch {
-              detailed = item;
-            }
-          }
-          const resultData: ResultData = detailed
-            ? resultDataFromCardapio(jobId, detailed)
-            : item
-            ? resultDataFromCardapio(jobId, item)
-            : {
-                jobId,
-                cardapioId: "",
-                nome: "Cardapio",
-                numDias: s.dias,
-                custoMedioDia: 0,
-              };
-          setState((prev) => ({
-            ...prev,
-            phase: "result",
-            loading: false,
-            cardapioId: item?.id || null,
-          }));
-          addAgentMessage(
-            "result",
-            "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.",
-            { resultData }
-          );
-        })
-        .catch(() => {
-          const s = stateRef.current!;
-          setState((prev) => ({ ...prev, phase: "result", loading: false }));
-          addAgentMessage("result", "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.", {
-            resultData: {
-              jobId,
-              cardapioId: "",
-              nome: "Cardapio",
-              numDias: s.dias,
-              custoMedioDia: 0,
-            },
-          });
-        });
+      streamRetryCountRef.current[jobId] = 0;
+      clearPollTimer();
+      resolveGenerationResult(jobId);
     }
 
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
+        if (data.type === "ping") return;
+        streamRetryCountRef.current[jobId] = 0;
         updateLastAgentMessage((msg) => {
           const updates: Partial<ChatMessage> = {};
           const progress = data.progress ?? data.progresso;
@@ -816,10 +908,10 @@ export function useChatGenerator() {
               );
             }
           }
-          if (data.message && data.type === "log") updates.pensamento = data.message;
-          if (data.pensamento) updates.pensamento = data.pensamento;
-          if (data.thought) updates.pensamento = data.thought;
-          if (data.preview) updates.pensamento = data.preview;
+          if (data.message && data.type === "log") updates.pensamento = String(data.message).slice(0, 220);
+          if (data.pensamento) updates.pensamento = String(data.pensamento).slice(0, 220);
+          if (data.thought) updates.pensamento = String(data.thought).slice(0, 220);
+          if (data.preview) updates.pensamento = String(data.preview).slice(0, 220);
           if (data.type === "aguardando_confirmacao") {
             updates.hitlData = {
               resumo: data.resumo,
@@ -858,6 +950,12 @@ export function useChatGenerator() {
 
     es.onerror = () => {
       es.close();
+      const retries = (streamRetryCountRef.current[jobId] || 0) + 1;
+      streamRetryCountRef.current[jobId] = retries;
+      if (retries >= 2) {
+        pollJobStatus(jobId, skipContractAnalysis);
+        return;
+      }
       api.gerar
         .status(jobId)
         .then((s) => {
@@ -902,6 +1000,7 @@ export function useChatGenerator() {
 
   function handleNewGeneration() {
     if (eventSourceRef.current) eventSourceRef.current.close();
+    clearPollTimer();
     setState((s) => ({
       ...s,
       phase: "welcome",
@@ -927,6 +1026,7 @@ export function useChatGenerator() {
 
   function regenerateCardapio() {
     if (eventSourceRef.current) eventSourceRef.current.close();
+    clearPollTimer();
     startGeneration();
   }
 

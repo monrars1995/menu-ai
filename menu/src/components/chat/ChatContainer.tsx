@@ -13,10 +13,14 @@ interface ChatContainerProps {
 export function ChatContainer({ children, className, onFileDrop }: ChatContainerProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const childrenCount = React.Children.count(children);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [children]);
+    const rafId = window.requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [childrenCount]);
 
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
