@@ -1,16 +1,13 @@
 """
-Catálogo de Modelos LLM (Menu.AI) — Multi-Provider
+Catálogo de Modelos LLM (Menu.AI) — OpenRouter centralizado.
 
-Delega para o novo sistema em llm_providers.py.
-Mantém compatibilidade com código legado.
+Delega para o sistema em llm_providers.py e mantém compatibilidade
+com imports legados do projeto.
 
-Provedores suportados:
-- openai: GPT-5.5, GPT-5, GPT-4.1, GPT-4o, etc
-- gemini: Gemini 3.1, Gemini 2.5 Pro/Flash
-- openrouter: Queen 3.6, GLM 5.1, Kimi K2.5 (legacy)
-
-OpenAI é o provedor padrão quando disponível.
-Gemini 3.1 é o fallback padrão.
+Modelos suportados:
+- queen-3.6
+- glm-5-1
+- kimi-k2.5
 """
 from __future__ import annotations
 
@@ -38,7 +35,7 @@ from pipeline.llm_providers import (
 # ============================================================
 
 # Constante legada
-DEFAULT_LLM_MODEL_ID = "gpt-4.1"
+DEFAULT_LLM_MODEL_ID = "queen-3.6"
 
 # Variáveis de env para override (mantidas para compatibilidade)
 _ENV_SLUG_QUEEN = "OPENROUTER_SLUG_QUEEN_36"

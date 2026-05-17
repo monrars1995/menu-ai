@@ -1,8 +1,8 @@
 """
 Configuração de modelo e credenciais para LiteLLM (compatibility layer).
 
-Este módulo mantém compatibilidade com código legado,
-mas delega para o novo sistema multi-provider em llm_providers.py.
+Mantém compatibilidade com código legado,
+delegando para o catálogo centralizado OpenRouter em llm_providers.py.
 """
 import os
 from dataclasses import dataclass
@@ -38,10 +38,9 @@ def get_litellm_config(model_override: Optional[str] = None) -> LitellmModelConf
     """
     Resolve modelo e credenciais para LiteLLM.completion.
     
-    Usa o novo sistema multi-provider (llm_providers.py).
-    OpenAI é o provedor padrão quando disponível.
+    Usa o sistema centralizado OpenRouter (llm_providers.py).
     
-    model_override: id interno do catálogo (gpt-4.1, gemini-3.1, queen-3.6) ou None para default.
+    model_override: id interno do catálogo (queen-3.6, glm-5-1, kimi-k2.5) ou None para default.
     """
     from pipeline.llm_providers import resolve_model_config, get_default_model_id
 
@@ -67,7 +66,7 @@ def get_litellm_config(model_override: Optional[str] = None) -> LitellmModelConf
             )
         raise EnvironmentError(
             f"\n❌ {e}\n"
-            f"   Configure OPENAI_API_KEY, GEMINI_API_KEY ou OPENROUTER_API_KEY no .env.\n"
+            f"   Configure OPENROUTER_API_KEY no .env.\n"
         )
     
     print(f"  🤖 LiteLLM ({cfg.provider}): {cfg.model_id} -> {cfg.model_string}")

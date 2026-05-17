@@ -1,9 +1,9 @@
 """
-Menu.AI — Model Router com Fallback Automático (Multi-Provider)
+Menu.AI — Model Router com Fallback Automático (OpenRouter)
 
-Camada de resiliência que tenta múltiplos modelos/providers em sequência.
+Camada de resiliência que tenta múltiplos modelos OpenRouter em sequência.
 Se o modelo primário falhar (timeout, rate limit, erro 5xx),
-tenta automaticamente o próximo na cadeia de fallback (cross-provider).
+tenta automaticamente o próximo na cadeia de fallback.
 
 Uso:
     from pipeline.model_router import ModelRouter
@@ -66,11 +66,11 @@ class ModelCallResult:
 
 class ModelRouter:
     """
-    Router de modelos LLM com fallback automático cross-provider e audit logging.
+    Router de modelos LLM com fallback automático e audit logging.
 
     Encapsula a lógica de:
     - Resolução de modelo (id interno → config completa via llm_providers)
-    - Fallback automático entre provedores (OpenAI → Gemini → OpenRouter)
+    - Fallback automático entre modelos OpenRouter
     - Registro de audit log para cada tentativa
     """
 
