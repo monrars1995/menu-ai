@@ -24,7 +24,7 @@ services:
       PORT: 8000
       DEBUG: "true"
       CREATE_ALL_ON_START: "false"
-      PYTHONPATH: /app
+      PYTHONPATH: /app:/install/lib/python3.13/site-packages
     ports:
       - "8000:8000"
     healthcheck:
