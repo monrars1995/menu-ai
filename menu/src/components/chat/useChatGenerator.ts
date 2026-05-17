@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import api, { API_BASE } from "@/lib/api";
+import api from "@/lib/api";
 import type { Contrato, ContratoAnalise, Cardapio, LlmModel } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -492,7 +492,7 @@ export function useChatGenerator() {
   function connectStream(jobId: string) {
     if (eventSourceRef.current) eventSourceRef.current.close();
 
-    const es = new EventSource(`${API_BASE}/api/stream/${jobId}`);
+    const es = new EventSource(api.gerar.streamUrl(jobId));
 
     es.onmessage = (e) => {
       try {

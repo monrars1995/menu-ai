@@ -115,7 +115,11 @@ export const api = {
   gerar: {
     start: (data: object) => request("/api/gerar", { method: "POST", body: JSON.stringify(data) }),
     status: (jobId: string) => request(`/api/status/${jobId}`),
-    streamUrl: (jobId: string) => `${API_BASE}/api/stream/${jobId}`,
+    streamUrl: (jobId: string) => {
+      const token = getToken();
+      const qs = token ? `?access_token=${encodeURIComponent(token)}` : "";
+      return `${API_BASE}/api/stream/${jobId}${qs}`;
+    },
     download: (jobId: string, formato: string) => `${API_BASE}/api/download/${jobId}?formato=${formato}`,
     confirmar: (jobId: string, confirmar: boolean, ajustes?: string) =>
       request(`/api/gerar/${jobId}/confirmar`, {
