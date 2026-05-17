@@ -57,7 +57,7 @@ export function ChatContainer({ children, className, onFileDrop }: ChatContainer
       onDrop={handleDrop}
       className={cn(
         "mx-auto w-full max-w-2xl relative",
-        "flex flex-1 flex-col gap-8 overflow-y-auto scroll-smooth px-3 py-6 sm:px-4 sm:py-8",
+        "min-h-0 flex flex-1 flex-col gap-6 overflow-y-auto overscroll-contain scroll-smooth px-3 pb-20 pt-4 sm:px-4 sm:pb-24 sm:pt-6",
         className
       )}
     >

@@ -144,14 +144,14 @@ export default function FichasPage() {
     <div className="space-y-4">
       <PageHeader title="Fichas Técnicas" description={`${fichas.length} ficha${fichas.length !== 1 ? "s" : ""} cadastrada${fichas.length !== 1 ? "s" : ""}`} actions={<Button onClick={openCreate} size="sm"><Plus size={16} />Nova Ficha</Button>} />
 
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-hairline bg-white p-3">
-        <div className="relative min-w-[240px] flex-1 sm:max-w-sm">
+      <div className="grid gap-3 rounded-lg border border-hairline bg-white p-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_220px]">
+        <div className="relative min-w-0">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted-48" />
           <input type="text" placeholder="Buscar fichas…" value={search} onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-md border border-hairline bg-white py-2 pl-8 pr-3 text-sm placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]" />
         </div>
         <select value={catFilter} onChange={(e) => setCatFilter(e.target.value)}
-          className="rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]">
+          className="w-full rounded-md border border-hairline bg-white px-3 py-2 text-sm focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)]">
           <option value="">Todas categorias</option>
           {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>

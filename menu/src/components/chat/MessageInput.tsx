@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { Upload, Send, FileText, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MealSelector } from "@/components/meal-selector";
@@ -64,6 +64,20 @@ export function MessageInput(props: MessageInputProps) {
     if (finalMeals.length > 0) {
       props.onSetRefeicoes?.(finalMeals);
     }
+  }
+
+  function handleSendChat() {
+    const message = chatDraft.trim();
+    if (!message) return;
+    props.onSendMessage?.(message);
+    setChatDraft("");
+  }
+
+  function handleChatKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    const isEnterWithoutShift = event.key === "Enter" && !event.shiftKey;
+    if (!isEnterWithoutShift || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    handleSendChat();
   }
 
   // Welcome — contract selection + upload
@@ -287,27 +301,14 @@ export function MessageInput(props: MessageInputProps) {
             <textarea
               value={chatDraft}
               onChange={(e) => setChatDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  if (chatDraft.trim()) {
-                    props.onSendMessage?.(chatDraft.trim());
-                    setChatDraft("");
-                  }
-                }
-              }}
+              onKeyDown={handleChatKeyDown}
               placeholder={phase === "hitl-confirm" ? "Ajuste os dados antes de confirmar..." : "Envie uma instrução ou refinamento..."}
               rows={1}
               className="min-h-[2.5rem] max-h-[8rem] w-full resize-none rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)] sm:flex-1"
             />
             <div className="flex shrink-0 justify-end gap-2">
               <button
-                onClick={() => {
-                  if (chatDraft.trim()) {
-                    props.onSendMessage?.(chatDraft.trim());
-                    setChatDraft("");
-                  }
-                }}
+                onClick={handleSendChat}
                 className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border"
               >
                 <Send size={14} />

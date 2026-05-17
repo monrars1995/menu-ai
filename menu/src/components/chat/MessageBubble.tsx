@@ -3,10 +3,7 @@
 import { useState } from "react";
 import {
   FileText,
-  Settings2,
   ChefHat,
-  DollarSign,
-  Clock,
   Sparkles,
   CheckCircle2,
   Loader2,
@@ -23,22 +20,10 @@ import {
 import { cn } from "@/lib/utils";
 import { AgentAvatar, UserAvatar } from "@/components/chat/ChatContainer";
 import { AgentMarkdown } from "@/components/chat/AgentMarkdown";
+import { GerarProgressRail } from "@/components/gerar/GerarProgressRail";
 import type { ContratoAnalise } from "@/lib/types";
 import type { ConfirmData, ResultData, UploadData } from "@/components/chat/useChatGenerator";
 import api from "@/lib/api";
-
-const STEP_LABELS = [
-  "Analisando contrato",
-  "Definindo estruturas",
-  "Selecionando fichas",
-  "Montando cardapio",
-  "Calculando custos",
-  "Revisando cardapio",
-  "Finalizando",
-  "Concluido",
-];
-
-const STEP_ICONS = [FileText, Settings2, FileSpreadsheet, ChefHat, DollarSign, Clock, Sparkles, CheckCircle2];
 
 export interface MessageBubbleProps {
   role: "agent" | "user";
@@ -290,6 +275,7 @@ function UploadReadyCard({
   onAnalyze?: () => void;
 }) {
   if (!data) return null;
+  const analiseDisponivel = data.analiseStatus === "analisado";
 
   return (
     <div className="rounded-xl border border-hairline bg-white p-4 shadow-sm shadow-black/[0.02]">
@@ -308,7 +294,7 @@ function UploadReadyCard({
               <span className="rounded-full bg-surface-soft px-2 py-1">{data.tamanhoKb} KB</span>
             )}
             <span className="rounded-full bg-surface-soft px-2 py-1">
-              Analise {data.analiseStatus === "analisado" ? "disponivel" : "pendente"}
+              Analise {analiseDisponivel ? "disponivel" : "pendente"}
             </span>
           </div>
         </div>
@@ -320,7 +306,7 @@ function UploadReadyCard({
           className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
         >
           <FileText size={15} />
-          Analisar contrato
+          {analiseDisponivel ? "Usar analise" : "Analisar contrato"}
         </button>
       </div>
     </div>
@@ -345,66 +331,7 @@ function PipelineView({
   return (
     <div className="rounded-xl bg-surface-soft p-4 space-y-4">
       <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted-48">Progresso</p>
-
-      {/* Progress bar at top */}
-      {progress > 0 && progress < 100 && (
-        <div>
-          <div className="h-1.5 rounded-full bg-ink/8">
-            <div
-              className="h-1.5 rounded-full bg-ink transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <p className="mt-1 text-right text-[10px] text-ink-muted-48">{progress}%</p>
-        </div>
-      )}
-
-      <div className="relative">
-        {/* Vertical connecting line */}
-        <div className="absolute left-3 top-3 bottom-3 w-px bg-ink/8" />
-
-        <div className="relative space-y-3">
-          {STEP_LABELS.map((label, i) => {
-            const Icon = STEP_ICONS[i];
-            const isDone = step > i;
-            const isCurrent = step === i;
-            return (
-              <div key={i} className="flex items-center gap-3">
-                <div
-                  className={cn(
-                    "relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-                    isDone
-                      ? "border-success bg-success text-white"
-                      : isCurrent
-                      ? "border-ink bg-ink/10 text-ink ring-2 ring-ink/15"
-                      : "border-ink/10 bg-surface-soft text-ink-muted-48"
-                  )}
-                >
-                  {isDone ? (
-                    <CheckCircle2 size={12} />
-                  ) : isCurrent ? (
-                    <Loader2 size={12} className="animate-spin" />
-                  ) : (
-                    <Icon size={12} />
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    "text-xs transition-colors",
-                    isDone
-                      ? "font-medium text-success"
-                      : isCurrent
-                      ? "font-medium text-ink"
-                      : "text-ink-muted-48"
-                  )}
-                >
-                  {label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <GerarProgressRail step={step} progress={progress} />
 
       {pensamento && (
         <div>

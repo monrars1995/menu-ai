@@ -34,9 +34,12 @@ export function ContractUpload({ onSelect, onUpload }: ContractUploadProps) {
 
   return (
     <div className="w-full space-y-5">
-      <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-hairline bg-white p-2 shadow-sm shadow-black/[0.03]">
-        <label className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-ink-muted-48 transition-colors hover:bg-surface-soft hover:text-ink" title="Enviar contrato">
-          <Upload className="h-5 w-5" />
+      <div className="mx-auto flex max-w-3xl items-center gap-3 rounded-xl border border-hairline bg-white p-3">
+        <label
+          className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md bg-surface-soft text-ink-muted-48 transition-colors hover:text-ink"
+          title="Enviar contrato"
+        >
+          <Upload className="h-4 w-4" />
           <input
             type="file"
             className="hidden"
@@ -44,8 +47,9 @@ export function ContractUpload({ onSelect, onUpload }: ContractUploadProps) {
             onChange={handleFileChange}
           />
         </label>
-        <div className="min-w-0 flex-1 px-1 text-sm text-ink-muted-48">
-          Envie um PDF/XLSX de contrato para começar
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-ink">Enviar contrato</p>
+          <p className="text-xs text-ink-muted-48">PDF/XLSX para análise automática</p>
         </div>
       </div>
 

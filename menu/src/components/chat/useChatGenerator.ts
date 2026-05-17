@@ -104,6 +104,7 @@ export interface ChatState {
   contratoId: string;
   contratoNome: string;
   contratoAnalise: ContratoAnalise | null;
+  contratoAnaliseConfirmada: boolean;
   dias: number;
   refeicoes: string[];
   custoAlvo: string;
@@ -186,6 +187,7 @@ export function useChatGenerator() {
     contratoId: "",
     contratoNome: "",
     contratoAnalise: null,
+    contratoAnaliseConfirmada: false,
     dias: 5,
     refeicoes: DEFAULT_REFEICOES,
     custoAlvo: "",
@@ -336,6 +338,13 @@ export function useChatGenerator() {
     return 0;
   }
 
+  function pipelineStepFromProgressWithContext(progress: number, skipContractAnalysis: boolean): number {
+    const step = pipelineStepFromProgress(progress);
+    if (!skipContractAnalysis) return step;
+    // Se o contrato já foi analisado/confirmado antes de gerar, evita voltar visualmente para etapa 0
+    return Math.max(1, step);
+  }
+
   function buildCardapioPreview(cardapio: Cardapio): CardapioPreviewDay[] {
     const days = [...(cardapio.dias || [])].sort((a, b) => Number(a.numero_dia || 0) - Number(b.numero_dia || 0));
     const preview: CardapioPreviewDay[] = [];
@@ -435,6 +444,7 @@ export function useChatGenerator() {
       contratoId: id,
       contratoNome: nome,
       contratoAnalise: analise,
+      contratoAnaliseConfirmada: true,
       phase: "config-days",
       loadingAnalise: false,
       loading: false,
@@ -459,44 +469,64 @@ export function useChatGenerator() {
       "Contrato";
     if (!contratoId) return;
 
-    setState((prev) => ({
-      ...prev,
-      contratoId,
-      contratoNome,
-      phase: "analysis",
-      loading: true,
-      loadingAnalise: true,
-    }));
+    if (!force) {
+      api.contratos
+        .analise(contratoId)
+        .then((analiseExistente) => {
+          if (analiseExistente?.status === "analisado") {
+            finishContratoAnalysis(contratoId, contratoNome, analiseExistente);
+            return;
+          }
+          runContratoAnalysis();
+        })
+        .catch(() => {
+          runContratoAnalysis();
+        });
+      return;
+    }
 
-    const progressMsgId = addAgentMessage(
-      "pipeline",
-      "Analisando contrato...",
-      { pipelineStep: 0, pipelineProgress: 15 }
-    );
+    runContratoAnalysis();
 
-    api.contratos
-      .analisar(contratoId, { llm_model: s.llmModel || undefined, force })
-      .then((analise) => {
-        updateMessage(progressMsgId, () => ({
-          pipelineStep: 7,
-          pipelineProgress: 100,
-          content: "Analise do contrato concluida.",
-        }));
-        finishContratoAnalysis(contratoId, contratoNome, analise);
-      })
-      .catch((e) => {
-        setState((prev) => ({
-          ...prev,
-          phase: "error",
-          loading: false,
-          loadingAnalise: false,
-        }));
-        updateMessage(progressMsgId, () => ({
-          type: "error",
-          content: e.message || "Erro ao analisar contrato.",
-          erro: e.message || "Erro ao analisar contrato.",
-        }));
-      });
+    function runContratoAnalysis() {
+      setState((prev) => ({
+        ...prev,
+        contratoId,
+        contratoNome,
+        phase: "analysis",
+        loading: true,
+        loadingAnalise: true,
+      }));
+
+      const progressMsgId = addAgentMessage(
+        "pipeline",
+        "Analisando contrato...",
+        { pipelineStep: 0, pipelineProgress: 15 }
+      );
+
+      api.contratos
+        .analisar(contratoId, { llm_model: s.llmModel || undefined, force })
+        .then((analise) => {
+          updateMessage(progressMsgId, () => ({
+            pipelineStep: 7,
+            pipelineProgress: 100,
+            content: "Analise do contrato concluida.",
+          }));
+          finishContratoAnalysis(contratoId, contratoNome, analise);
+        })
+        .catch((e) => {
+          setState((prev) => ({
+            ...prev,
+            phase: "error",
+            loading: false,
+            loadingAnalise: false,
+          }));
+          updateMessage(progressMsgId, () => ({
+            type: "error",
+            content: e.message || "Erro ao analisar contrato.",
+            erro: e.message || "Erro ao analisar contrato.",
+          }));
+        });
+    }
   }
 
   function goToUpload() {
@@ -539,6 +569,7 @@ export function useChatGenerator() {
           ...prev,
           contratoId: contrato_id,
           contratoNome: contrato_nome,
+          contratoAnaliseConfirmada: analise_status === "analisado",
           phase: "upload-confirm",
           loading: false,
         }));
@@ -665,12 +696,17 @@ export function useChatGenerator() {
     addUserMessage("Gerar cardapio!");
 
     const s = stateRef.current!;
+    const skipContractAnalysis = Boolean(
+      s.contratoAnaliseConfirmada ||
+      s.contratoAnalise?.status === "analisado" ||
+      buildContratoRestricoesFixas(s.contratoAnalise)
+    );
     setState((prev) => ({ ...prev, phase: "generating", loading: true }));
 
     addAgentMessage(
       "pipeline",
       "Gerando cardapio...",
-      { pipelineStep: 0, pipelineProgress: 0 }
+      { pipelineStep: skipContractAnalysis ? 1 : 0, pipelineProgress: 0 }
     );
 
     const data = {
@@ -682,7 +718,7 @@ export function useChatGenerator() {
       restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
       refeicoes: s.refeicoes,
       llm_model: s.llmModel || undefined,
-      contrato_analise_confirmada: s.contratoAnalise?.status === "analisado",
+      contrato_analise_confirmada: skipContractAnalysis,
       generation_mode: "fast",
     };
 
@@ -691,7 +727,7 @@ export function useChatGenerator() {
       .then((res) => {
         const jobId = res.job_id as string;
         setState((prev) => ({ ...prev, jobId }));
-        connectStream(jobId);
+        connectStream(jobId, skipContractAnalysis);
 
         // Criar sessão de chat vinculada ao job
         api.chat.criarSessao(jobId).then((sessao) => {
@@ -707,7 +743,7 @@ export function useChatGenerator() {
       });
   }
 
-  function connectStream(jobId: string) {
+  function connectStream(jobId: string, skipContractAnalysis = false) {
     if (eventSourceRef.current) eventSourceRef.current.close();
 
     const es = new EventSource(api.gerar.streamUrl(jobId));
@@ -773,7 +809,12 @@ export function useChatGenerator() {
           if (data.step !== undefined) updates.pipelineStep = data.step;
           if (progress !== undefined) {
             updates.pipelineProgress = progress;
-            if (data.step === undefined) updates.pipelineStep = pipelineStepFromProgress(progress);
+            if (data.step === undefined) {
+              updates.pipelineStep = pipelineStepFromProgressWithContext(
+                progress,
+                skipContractAnalysis
+              );
+            }
           }
           if (data.message && data.type === "log") updates.pensamento = data.message;
           if (data.pensamento) updates.pensamento = data.pensamento;
@@ -848,7 +889,7 @@ export function useChatGenerator() {
             setState((prev) => ({ ...prev, phase: "error", loading: false }));
             addAgentMessage("error", s.erro || s.error || "Erro na geracao");
           } else {
-            setTimeout(() => connectStream(jobId), 2000);
+            setTimeout(() => connectStream(jobId, skipContractAnalysis), 2000);
           }
         })
         .catch(() => {
@@ -868,6 +909,7 @@ export function useChatGenerator() {
       contratoId: "",
       contratoNome: "",
       contratoAnalise: null,
+      contratoAnaliseConfirmada: false,
       dias: 5,
       refeicoes: DEFAULT_REFEICOES,
       custoAlvo: "",
