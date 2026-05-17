@@ -1,0 +1,61 @@
+# generated: 2026-05-16T22:20:00-03:00
+# last_updated: 2026-05-16T22:20:00-03:00
+# project: MENU I.A
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: {project-root}/_bmad-output/implementation-artifacts
+#
+# STATUS DEFINITIONS:
+# Epic: backlog | in-progress | done
+# Story: backlog | ready-for-dev | in-progress | review | done
+# Retrospective: optional | done
+
+generated: "2026-05-16T22:20:00-03:00"
+last_updated: "2026-05-17T00:17:00-03:00"
+project: "MENU I.A"
+project_key: "NOKEY"
+tracking_system: "file-system"
+story_location: "{project-root}/_bmad-output/implementation-artifacts"
+
+development_status:
+  epic-1: in-progress
+  1-1-subir-stack-base-em-ambiente-oficial: ready-for-dev
+  1-2-implementar-autenticacao-jwt-e-escopo-de-tenant: ready-for-dev
+  1-3-aplicar-matriz-rbac-por-papel: ready-for-dev
+  1-4-registrar-eventos-de-acesso-e-saude-de-stack: ready-for-dev
+  epic-1-retrospective: optional
+
+  epic-2: in-progress
+  2-1-selecionar-contrato-existente-no-fluxo-de-geracao: ready-for-dev
+  2-2-upload-e-deduplicacao-de-contrato: ready-for-dev
+  2-3-interpretacao-e-persistencia-de-regras-contratuais: ready-for-dev
+  2-4-fallback-para-analise-parcial: ready-for-dev
+  epic-2-retrospective: optional
+
+  epic-3: in-progress
+  3-1-capturar-parametros-de-geracao-via-chat-wizard: ready-for-dev
+  3-2-confirmar-solicitacao-e-iniciar-job-de-geracao: ready-for-dev
+  3-3-exibir-progresso-de-pipeline-em-tempo-real: ready-for-dev
+  3-4-explicar-resultado-e-permitir-regeneracao: ready-for-dev
+  epic-3-retrospective: optional
+
+  epic-4: in-progress
+  4-1-crud-de-fichas-tecnicas-por-tenant: ready-for-dev
+  4-2-crud-de-ingredientes-por-tenant: ready-for-dev
+  4-3-calculo-de-custo-e-nutricao-por-ficha: ready-for-dev
+  4-4-expor-metricas-de-consistencia-da-base: ready-for-dev
+  epic-4-retrospective: optional
+
+  epic-5: in-progress
+  5-1-persistir-cardapio-e-contexto-de-geracao: ready-for-dev
+  5-2-implementar-workflow-de-aprovacao: ready-for-dev
+  5-3-exibir-detalhamento-e-historico-de-cardapios: ready-for-dev
+  5-4-exportar-em-formatos-operacionais: ready-for-dev
+  epic-5-retrospective: optional
+
+  epic-6: in-progress
+  6-1-dashboard-e-endpoints-canonicos-de-informacao: ready-for-dev
+  6-2-configuracao-administrativa-de-modelos-llm: ready-for-dev
+  6-3-ferramentas-de-suporte-para-troubleshooting: ready-for-dev
+  6-4-api-de-integracao-para-sistemas-externos: ready-for-dev
+  epic-6-retrospective: optional
