@@ -7,7 +7,8 @@ import math
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database.connection import get_db
@@ -21,6 +22,11 @@ router = APIRouter(prefix="/api/contratos", tags=["Contratos"])
 
 UPLOAD_DIR = Path("data/uploads/contratos")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class ContratoAnalyzeRequest(BaseModel):
+    llm_model: Optional[str] = None
+    force: bool = False
 
 
 def _resolve_empresa_context(usuario, empresa_id: Optional[str]) -> str:
@@ -41,6 +47,30 @@ def _resolve_empresa_context(usuario, empresa_id: Optional[str]) -> str:
     if not user_empresa:
         raise HTTPException(status_code=400, detail="Utilizador sem empresa associada.")
     return user_empresa
+
+
+def _contrato_analise_payload(contrato: Contrato, regras: dict) -> dict:
+    return {
+        "contrato_id": contrato.id,
+        "status": "analisado",
+        "nome_contrato": contrato.nome,
+        "numero_contrato": contrato.numero_contrato,
+        "necessidades": {
+            "estrutura_refeicao": contrato.estrutura_refeicao,
+            "num_refeicoes_dia": contrato.num_refeicoes_dia,
+            "observacoes": regras.get("observacoes", contrato.observacoes),
+        },
+        "servicos": {
+            "num_refeicoes_dia": contrato.num_refeicoes_dia,
+            "estrutura": regras.get("estrutura", contrato.estrutura_refeicao),
+        },
+        "incidencias": regras.get("incidencias", contrato.incidencias_json or {}),
+        "gramaturas": regras.get("gramaturas", contrato.gramaturas_json or {}),
+        "proibicoes": regras.get("proibicoes", contrato.proibicoes_json or []),
+        "restricoes_alergenos": regras.get("restricoes_alergenos", []),
+        "dietas_especiais": regras.get("dietas_especiais", []),
+        "sazonalidade": regras.get("sazonalidade_obrigatoria", []),
+    }
 
 
 @router.get("/", summary="Listar contratos")
@@ -214,36 +244,71 @@ def obter_analise(
             except Exception:
                 pass
 
-    # 3. Fallback: arquivo global da última análise
-    if not regras:
-        regras_global = Path("data/uploads/_regras_contrato.json")
-        if regras_global.exists():
-            try:
-                regras = json.loads(regras_global.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-
     if not regras:
         return {"contrato_id": contrato_id, "status": "nao_analisado", "mensagem": "Nenhuma análise encontrada. Execute a geração de cardápio para que o agente Analista extraia as regras."}
 
-    return {
-        "contrato_id": contrato_id,
-        "status": "analisado",
-        "nome_contrato": contrato.nome,
-        "numero_contrato": contrato.numero_contrato,
-        "necessidades": {
-            "estrutura_refeicao": contrato.estrutura_refeicao,
-            "num_refeicoes_dia": contrato.num_refeicoes_dia,
-            "observacoes": regras.get("observacoes", contrato.observacoes),
-        },
-        "servicos": {
-            "num_refeicoes_dia": contrato.num_refeicoes_dia,
-            "estrutura": regras.get("estrutura", contrato.estrutura_refeicao),
-        },
-        "incidencias": regras.get("incidencias", contrato.incidencias_json or []),
-        "gramaturas": regras.get("gramaturas", contrato.gramaturas_json or {}),
-        "proibicoes": regras.get("proibicoes", contrato.proibicoes_json or []),
-        "restricoes_alergenos": regras.get("restricoes_alergenos", []),
-        "dietas_especiais": regras.get("dietas_especiais", []),
-        "sazonalidade": regras.get("sazonalidade_obrigatoria", []),
-    }
+    return _contrato_analise_payload(contrato, regras)
+
+
+@router.post("/{contrato_id}/analisar", summary="Executar análise do contrato")
+def analisar_contrato(
+    contrato_id: str,
+    body: ContratoAnalyzeRequest = Body(default_factory=ContratoAnalyzeRequest),
+    db: Session = Depends(get_db),
+    usuario=Depends(get_usuario_atual),
+):
+    """Executa o Analista de Contratos, persiste regras extraídas e retorna o resumo estruturado."""
+    contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
+    if not contrato:
+        raise HTTPException(status_code=404, detail="Contrato não encontrado.")
+    if usuario.role != "super_admin" and usuario.empresa_id != contrato.empresa_id:
+        raise HTTPException(status_code=403, detail="Acesso negado.")
+    if not contrato.arquivo_path:
+        raise HTTPException(status_code=400, detail="Contrato sem arquivo carregado.")
+
+    if contrato.regras_json and not body.force:
+        return _contrato_analise_payload(contrato, contrato.regras_json)
+
+    try:
+        from pipeline.openrouter_models import assert_llm_model_allowed_for_generation
+
+        assert_llm_model_allowed_for_generation(db, body.llm_model)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        from pipeline.orchestrator import MenuOrchestrator
+
+        crew = MenuOrchestrator(
+            contrato_path=contrato.arquivo_path,
+            dias=30,
+            target_custo_total=contrato.custo_total_max or 10.00,
+            target_custo_proteico=contrato.custo_proteico_max or 3.50,
+            restricoes_usuario="",
+            refeicoes=None,
+            empresa_id=str(contrato.empresa_id),
+            contrato_id=str(contrato.id),
+            db_disponivel=True,
+            llm_model_id=body.llm_model,
+        )
+        regras = crew.analisar_contrato_apenas()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao analisar contrato: {exc}")
+
+    if not isinstance(regras, dict):
+        regras = {"texto": str(regras)}
+    if regras.get("erro"):
+        raise HTTPException(status_code=502, detail=f"Falha ao analisar contrato: {regras.get('erro')}")
+
+    contrato.regras_json = regras
+    contrato.gramaturas_json = regras.get("gramaturas", contrato.gramaturas_json)
+    contrato.incidencias_json = regras.get("incidencias", contrato.incidencias_json)
+    contrato.proibicoes_json = regras.get("proibicoes", contrato.proibicoes_json)
+    contrato.estrutura_refeicao = regras.get("estrutura", contrato.estrutura_refeicao)
+    contrato.observacoes = regras.get("observacoes", contrato.observacoes)
+    db.commit()
+    db.refresh(contrato)
+    sync_knowledge_safe(sync_contrato_document, db, contrato)
+    db.commit()
+
+    return _contrato_analise_payload(contrato, regras)

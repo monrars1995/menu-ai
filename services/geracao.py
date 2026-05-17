@@ -75,6 +75,7 @@ def executar_crew(
     *,
     upload_dir: Path,
     db_ok: bool,
+    contrato_analise_confirmada: bool = False,
 ):
     q = job_state.job_queues[job_id]
     AGENTES = [
@@ -117,6 +118,7 @@ def executar_crew(
         progress(5, "🚀 Iniciando enxame de agentes...")
 
         contrato_path = None
+        contrato_regras_db = None
         if db_ok and contrato_id:
             try:
                 from database.connection import SessionLocal
@@ -126,6 +128,8 @@ def executar_crew(
                 contrato_db = db.query(Contrato).filter(Contrato.id == contrato_id).first()
                 if contrato_db and contrato_db.arquivo_path:
                     contrato_path = contrato_db.arquivo_path
+                if contrato_db and contrato_db.regras_json:
+                    contrato_regras_db = contrato_db.regras_json
                 db.close()
             except Exception:
                 pass
@@ -205,13 +209,22 @@ def executar_crew(
             db_disponivel=db_ok,
             llm_model_id=llm_model,
         )
+        crew._job_id = job_id
 
         # ============================================================
         # Human-in-the-Loop: pausa para confirmação após contrato
         # ============================================================
         # Fase 1: Análise do contrato (se disponível)
         resumo_contrato = None
-        if contrato_path:
+        analise_pre_confirmada = bool(contrato_analise_confirmada and contrato_regras_db)
+        if contrato_regras_db:
+            crew.ctx.regras_contrato = contrato_regras_db
+
+        if analise_pre_confirmada:
+            crew.skip_contract_analysis = True
+            progress(20, "📋 Análise do contrato já confirmada. Usando regras extraídas.", "Analista de Contratos")
+            progress(40, "🏁 Contexto confirmado. Iniciando montagem do cardápio...", "Sistema")
+        elif contrato_path:
             try:
                 progress(20, "📋 Analisando contrato...", "Analista de Contratos")
                 resumo_contrato = crew.analisar_contrato_apenas()

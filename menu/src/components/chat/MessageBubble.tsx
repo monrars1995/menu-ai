@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar, UserAvatar } from "@/components/chat/ChatContainer";
 import { AgentMarkdown } from "@/components/chat/AgentMarkdown";
 import type { ContratoAnalise } from "@/lib/types";
-import type { ConfirmData, ResultData } from "@/components/chat/useChatGenerator";
+import type { ConfirmData, ResultData, UploadData } from "@/components/chat/useChatGenerator";
 import api from "@/lib/api";
 
 const STEP_LABELS = [
@@ -41,7 +41,7 @@ const STEP_ICONS = [FileText, Settings2, FileSpreadsheet, ChefHat, DollarSign, C
 
 export interface MessageBubbleProps {
   role: "agent" | "user";
-  type: "text" | "analysis" | "pipeline" | "confirm" | "result" | "error" | "uploading";
+  type: "text" | "analysis" | "pipeline" | "confirm" | "result" | "error" | "uploading" | "upload-ready";
   content: string;
   analysis?: ContratoAnalise | null;
   pipelineStep?: number;
@@ -53,6 +53,8 @@ export interface MessageBubbleProps {
     jobId: string;
   };
   resultData?: ResultData;
+  uploadData?: UploadData;
+  uploadProgress?: number;
   erro?: string;
   onSelectContrato?: (id: string) => void;
   loadingContratos?: boolean;
@@ -67,6 +69,7 @@ export interface MessageBubbleProps {
   onAdjust?: () => void;
   onNewGeneration?: () => void;
   onConfirmHitl?: (confirm: boolean, ajustes?: string) => void;
+  onAnalyzeContrato?: (id?: string, nome?: string, force?: boolean) => void;
 }
 
 export function MessageBubble(props: MessageBubbleProps) {
@@ -98,10 +101,32 @@ export function MessageBubble(props: MessageBubbleProps) {
         ) : null}
         {type === "analysis" && <AnalysisCard analysis={props.analysis ?? null} />}
         {type === "uploading" && (
-          <div className="flex items-center gap-2 rounded-xl bg-surface-soft p-4">
-            <Loader2 size={14} className="animate-spin text-ink" />
-            <span className="text-sm text-ink-muted-48">{content}</span>
+          <div className="rounded-xl bg-surface-soft p-4">
+            <div className="flex items-center gap-2">
+              <Loader2 size={14} className="animate-spin text-ink" />
+              <span className="text-sm text-ink-muted-48">{content}</span>
+            </div>
+            {typeof props.uploadProgress === "number" && (
+              <div className="mt-3 h-1.5 rounded-full bg-ink/8">
+                <div
+                  className="h-1.5 rounded-full bg-ink transition-all duration-300"
+                  style={{ width: `${props.uploadProgress}%` }}
+                />
+              </div>
+            )}
           </div>
+        )}
+        {type === "upload-ready" && (
+          <UploadReadyCard
+            data={props.uploadData}
+            onAnalyze={() =>
+              props.onAnalyzeContrato?.(
+                props.uploadData?.contratoId,
+                props.uploadData?.contratoNome,
+                false
+              )
+            }
+          />
         )}
         {type === "pipeline" && (
           <>
@@ -241,6 +266,55 @@ function AnalysisCard({ analysis }: { analysis: ContratoAnalise | null }) {
           {analysis.necessidades.observacoes}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Upload Ready Card
+// ---------------------------------------------------------------------------
+
+function UploadReadyCard({
+  data,
+  onAnalyze,
+}: {
+  data?: UploadData;
+  onAnalyze?: () => void;
+}) {
+  if (!data) return null;
+
+  return (
+    <div className="rounded-xl border border-hairline bg-white p-4 shadow-sm shadow-black/[0.02]">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success/10">
+          <CheckCircle2 size={18} className="text-success" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-ink">Upload concluido</p>
+          <p className="mt-1 truncate text-xs text-ink-muted-48">{data.contratoNome}</p>
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-ink-muted-48">
+            <span className="rounded-full bg-surface-soft px-2 py-1">
+              {data.novoContrato ? "Novo contrato" : "Contrato existente"}
+            </span>
+            {typeof data.tamanhoKb === "number" && (
+              <span className="rounded-full bg-surface-soft px-2 py-1">{data.tamanhoKb} KB</span>
+            )}
+            <span className="rounded-full bg-surface-soft px-2 py-1">
+              Analise {data.analiseStatus === "analisado" ? "disponivel" : "pendente"}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={onAnalyze}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
+        >
+          <FileText size={15} />
+          Analisar contrato
+        </button>
+      </div>
     </div>
   );
 }

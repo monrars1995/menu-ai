@@ -460,6 +460,10 @@ class GerarCardapioRequest(BaseModel):
         default=None,
         description="Modelo LLM (id interno). Omitir usa MENUAI_DEFAULT_LLM_MODEL ou openai-gpt-5.5.",
     )
+    contrato_analise_confirmada: bool = Field(
+        default=False,
+        description="True quando a análise do contrato já foi revisada/confirmada antes de iniciar a geração.",
+    )
 
 
 class JobAgenteOut(BaseModel):

@@ -66,6 +66,11 @@ export const api = {
       });
     },
     analise: (id: string) => request(`/api/contratos/${id}/analise`),
+    analisar: (id: string, data?: { llm_model?: string; force?: boolean }) =>
+      request(`/api/contratos/${id}/analisar`, {
+        method: "POST",
+        body: JSON.stringify(data || {}),
+      }),
   },
 
   ingredientes: {
@@ -133,26 +138,40 @@ export const api = {
       restricoes_usuario?: string;
       nome_cardapio?: string;
       llm_model?: string;
-    }) => {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("dias", String(params.dias));
-      formData.append("refeicoes", JSON.stringify(params.refeicoes));
-      if (params.target_custo_total) formData.append("target_custo_total", String(params.target_custo_total));
-      if (params.restricoes_usuario) formData.append("restricoes_usuario", params.restricoes_usuario);
-      if (params.nome_cardapio) formData.append("nome_cardapio", params.nome_cardapio);
-      if (params.llm_model) formData.append("llm_model", params.llm_model);
-      const token = getToken();
-      const res = await fetch(`${API_BASE}/api/gerar/upload`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
+    }, onProgress?: (progress: number) => void) => {
+      return new Promise<any>((resolve, reject) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("dias", String(params.dias));
+        formData.append("refeicoes", JSON.stringify(params.refeicoes));
+        if (params.target_custo_total) formData.append("target_custo_total", String(params.target_custo_total));
+        if (params.restricoes_usuario) formData.append("restricoes_usuario", params.restricoes_usuario);
+        if (params.nome_cardapio) formData.append("nome_cardapio", params.nome_cardapio);
+        if (params.llm_model) formData.append("llm_model", params.llm_model);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${API_BASE}/api/gerar/upload`);
+        const token = getToken();
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          onProgress?.(Math.round((event.loaded / event.total) * 100));
+        };
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            onProgress?.(100);
+            try {
+              resolve(JSON.parse(xhr.responseText));
+            } catch {
+              resolve({});
+            }
+            return;
+          }
+          reject(new ApiError(xhr.responseText || "Erro no upload", xhr.status));
+        };
+        xhr.onerror = () => reject(new ApiError("Erro de rede no upload", xhr.status || 0));
+        xhr.send(formData);
       });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "Erro no upload");
-        throw new ApiError(text, res.status);
-      }
-      return res.json();
     },
   },
 

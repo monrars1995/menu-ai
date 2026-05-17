@@ -28,7 +28,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.5.6"
+APP_VERSION = "3.5.7"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -502,6 +502,7 @@ async def gerar_cardapio(
         body_resolved.llm_model,
         upload_dir=UPLOAD_DIR,
         db_ok=_db_ok,
+        contrato_analise_confirmada=body_resolved.contrato_analise_confirmada,
     )
     return {"job_id": job_id, "status": "iniciando"}
 
@@ -520,15 +521,13 @@ async def gerar_cardapio_com_upload(
     background_tasks: BackgroundTasks = None,
     usuario: Optional[Usuario] = Depends(get_usuario_geracao),
 ):
-    """Upload de contrato + geração em uma única chamada.
+    """Upload/cadastro de contrato para o fluxo assistido.
 
     - Deduplica por SHA256 do arquivo
     - Cria contrato automaticamente se novo
-    - Dispara pipeline de geração em background
-    - Retorna job_id + contrato_id + analise
+    - Não dispara análise nem geração; o frontend confirma o upload antes da análise
     """
     import hashlib
-    import json as _json
 
     # 1. Validar extensão
     ext = Path(file.filename or "").suffix.lower()
@@ -574,6 +573,13 @@ async def gerar_cardapio_com_upload(
                 contrato_id = contrato.id
                 contrato_nome = contrato.nome
                 novo_contrato = False
+                if not contrato.arquivo_path:
+                    upload_subdir = UPLOAD_DIR / "contratos"
+                    upload_subdir.mkdir(parents=True, exist_ok=True)
+                    dest = upload_subdir / f"{file_hash}{ext}"
+                    dest.write_bytes(content)
+                    contrato.arquivo_path = str(dest)
+                    db.commit()
             else:
                 contrato_id = str(model_uuid())
                 upload_subdir = UPLOAD_DIR / "contratos"
@@ -592,6 +598,17 @@ async def gerar_cardapio_com_upload(
                 db.commit()
                 db.refresh(contrato)
                 novo_contrato = True
+
+            try:
+                from services.knowledge_base import sync_contrato_document
+                from services.knowledge_hooks import sync_knowledge_safe
+
+                sync_knowledge_safe(sync_contrato_document, db, contrato)
+                db.commit()
+            except Exception:
+                pass
+
+            analise_status = "analisado" if contrato.regras_json else "pendente"
         finally:
             db.close()
     else:
@@ -602,91 +619,18 @@ async def gerar_cardapio_com_upload(
         dest.write_bytes(content)
         contrato_id = file_hash[:16]
         novo_contrato = True
-
-    # 5. Parse refeicoes
-    try:
-        refeicoes_list = _json.loads(refeicoes) if isinstance(refeicoes, str) else refeicoes
-    except Exception:
-        refeicoes_list = ["almoco", "jantar"]
-
-    # 6. Disparar pipeline de geração (mesma lógica do /api/gerar)
-    gerar_body = GerarCardapioRequest(
-        empresa_id=eid,
-        contrato_id=contrato_id,
-        dias=dias,
-        target_custo_total=target_custo_total,
-        target_custo_proteico=3.50,
-        restricoes_usuario=restricoes_usuario or "",
-        refeicoes=refeicoes_list,
-        nome_cardapio=nome_cardapio,
-        llm_model=llm_model,
-    )
-
-    if _db_ok:
-        from pipeline.openrouter_models import assert_llm_model_allowed_for_generation
-        from database.connection import SessionLocal
-
-        db_chk = SessionLocal()
-        try:
-            assert_llm_model_allowed_for_generation(db_chk, gerar_body.llm_model)
-        finally:
-            db_chk.close()
-
-    job_id = str(uuid.uuid4())[:8]
-    job_state.jobs[job_id] = {
-        "status": "iniciando",
-        "progress": 0,
-        "logs": [],
-        "result": None,
-        "error": None,
-        "config": gerar_body.model_dump(),
-    }
-    job_state.job_queues[job_id] = queue.Queue()
-
-    if _db_ok:
-        try:
-            from database.connection import SessionLocal
-            from database.models import JobAgente as JA
-
-            db = SessionLocal()
-            job_db = JA(
-                job_id=job_id,
-                empresa_id=eid,
-                status="iniciando",
-                progresso=0,
-                parametros_json=gerar_body.model_dump(),
-                iniciado_em=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-                criado_por_id=(str(usuario.id) if usuario else None),
-            )
-            db.add(job_db)
-            db.commit()
-            db.close()
-        except Exception as e:
-            print(f"⚠️  Não foi possível persistir job: {e}")
-
-    background_tasks.add_task(
-        executar_crew,
-        job_id,
-        gerar_body.dias,
-        gerar_body.target_custo_total,
-        gerar_body.target_custo_proteico,
-        gerar_body.restricoes_usuario,
-        gerar_body.refeicoes,
-        eid,
-        gerar_body.contrato_id,
-        gerar_body.nome_cardapio,
-        gerar_body.llm_model,
-        upload_dir=UPLOAD_DIR,
-        db_ok=_db_ok,
-    )
+        analise_status = "pendente"
 
     return {
-        "job_id": job_id,
+        "success": True,
+        "upload_status": "concluido",
         "contrato_id": contrato_id,
         "contrato_nome": contrato_nome,
         "novo_contrato": novo_contrato,
-        "analise": None,
+        "analise_status": analise_status,
+        "filename": file.filename,
+        "tipo": ext[1:],
+        "tamanho_kb": round(len(content) / 1024, 1),
     }
 
 

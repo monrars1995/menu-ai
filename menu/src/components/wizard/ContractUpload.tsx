@@ -33,30 +33,10 @@ export function ContractUpload({ onSelect, onUpload }: ContractUploadProps) {
   };
 
   return (
-    <div className="flex flex-col space-y-6">
-      <div className="text-center">
-        <h2 className="text-xl font-semibold text-ink">Selecione o Contrato</h2>
-        <p className="text-sm text-ink-muted-48 mt-1">
-          Escolha um contrato existente ou envie um novo arquivo (PDF/Excel)
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Upload Card */}
-        <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-hairline rounded-xl hover:border-primary hover:bg-surface-elevated transition-colors cursor-pointer group h-full min-h-[200px]">
-          <div className="flex flex-col items-center justify-center space-y-3">
-            <div className="w-12 h-12 rounded-full bg-surface flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-              <Upload className="w-6 h-6 text-ink-muted-48 group-hover:text-primary transition-colors" />
-            </div>
-            <div className="text-center">
-              <span className="text-sm font-medium text-ink block">
-                Fazer upload de arquivo
-              </span>
-              <span className="text-xs text-ink-muted-48">
-                PDF, XLS, ou XLSX (Max 10MB)
-              </span>
-            </div>
-          </div>
+    <div className="w-full space-y-5">
+      <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-2xl border border-hairline bg-white p-2 shadow-sm shadow-black/[0.03]">
+        <label className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full text-ink-muted-48 transition-colors hover:bg-surface-soft hover:text-ink" title="Enviar contrato">
+          <Upload className="h-5 w-5" />
           <input
             type="file"
             className="hidden"
@@ -64,36 +44,38 @@ export function ContractUpload({ onSelect, onUpload }: ContractUploadProps) {
             onChange={handleFileChange}
           />
         </label>
+        <div className="min-w-0 flex-1 px-1 text-sm text-ink-muted-48">
+          Envie um PDF/XLSX de contrato para começar
+        </div>
+      </div>
 
-        {/* Existing Contracts List */}
-        <div className="flex flex-col p-4 border border-hairline rounded-xl bg-surface-elevated min-h-[200px] max-h-[300px] overflow-y-auto">
-          <h3 className="text-sm font-semibold text-ink mb-3 sticky top-0 bg-surface-elevated pb-2 z-10">
-            Contratos Salvos
-          </h3>
-          
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-2 flex items-center gap-2 px-1">
+          <FileText className="h-4 w-4 text-ink-muted-48" />
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted-48">Contratos salvos</p>
+        </div>
+        <div className="max-h-64 overflow-y-auto rounded-xl border border-hairline bg-white p-2">
           {loading ? (
-            <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <div className="flex items-center justify-center gap-2 py-8 text-sm text-ink-muted-48">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              Carregando contratos...
             </div>
           ) : contratos.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center text-ink-muted-48">
-              <FileText className="w-8 h-8 mb-2 opacity-50" />
-              <p className="text-xs">Nenhum contrato encontrado.</p>
+            <div className="py-8 text-center text-sm text-ink-muted-48">
+              Nenhum contrato salvo.
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="grid gap-1 sm:grid-cols-2">
               {contratos.map((contrato) => (
                 <button
                   key={contrato.id}
                   onClick={() => onSelect(contrato.id)}
-                  className="w-full flex items-center p-3 text-left bg-white border border-hairline rounded-lg hover:border-primary hover:shadow-sm transition-all group"
+                  className="flex min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border"
                 >
-                  <FileText className="w-5 h-5 text-ink-muted-48 mr-3 group-hover:text-primary transition-colors" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-ink truncate">
-                      {contrato.nome}
-                    </p>
-                    <p className="text-xs text-ink-muted-48 truncate">
+                  <FileText className="h-4 w-4 shrink-0 text-ink-muted-48" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">{contrato.nome}</p>
+                    <p className="truncate text-xs text-ink-muted-48">
                       {new Date(contrato.created_at).toLocaleDateString()}
                     </p>
                   </div>

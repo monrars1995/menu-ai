@@ -165,6 +165,7 @@ export interface GerarRequest {
   refeicoes?: string[];
   nome_cardapio?: string;
   llm_model?: string;
+  contrato_analise_confirmada?: boolean;
 }
 
 export interface JobStatus {
@@ -209,14 +210,18 @@ export type RefeicaoTipo = "cafe_manha" | "lanche_manha" | "almoco" | "lanche_ta
 
 export interface ContratoAnalise {
   status: string;
+  contrato_id?: string;
+  nome_contrato?: string;
+  numero_contrato?: string | null;
+  mensagem?: string;
   necessidades: { observacoes?: string; estrutura_refeicao?: Record<string, unknown>; num_refeicoes_dia?: number };
   servicos: { num_refeicoes_dia?: number; estrutura?: Record<string, unknown> };
   gramaturas: Record<string, string>;
-  incidencias: string[];
+  incidencias: Record<string, string> | string[];
   proibicoes: string[];
   restricoes_alergenos: string[];
   dietas_especiais: string[];
-  sazonalidade: string[];
+  sazonalidade: string[] | boolean;
 }
 
 export interface GramaturaConferencia {

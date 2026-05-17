@@ -11,6 +11,7 @@ import type { Contrato, ContratoAnalise, Cardapio, LlmModel } from "@/lib/types"
 export type ChatPhase =
   | "welcome"
   | "analysis"
+  | "upload-confirm"
   | "config-days"
   | "config-meals"
   | "config-cost"
@@ -29,7 +30,8 @@ export type MessageType =
   | "confirm"
   | "result"
   | "error"
-  | "uploading";
+  | "uploading"
+  | "upload-ready";
 
 export interface ChatMessage {
   id: string;
@@ -47,6 +49,8 @@ export interface ChatMessage {
     jobId: string;
   };
   resultData?: ResultData;
+  uploadData?: UploadData;
+  uploadProgress?: number;
   erro?: string;
 }
 
@@ -69,11 +73,20 @@ export interface ResultData {
   custoMedioDia: number;
 }
 
+export interface UploadData {
+  contratoId: string;
+  contratoNome: string;
+  novoContrato?: boolean;
+  tamanhoKb?: number;
+  analiseStatus?: string;
+}
+
 export interface ChatState {
   phase: ChatPhase;
   messages: ChatMessage[];
   contratos: Contrato[];
   contratoId: string;
+  contratoNome: string;
   contratoAnalise: ContratoAnalise | null;
   dias: number;
   refeicoes: string[];
@@ -93,11 +106,15 @@ export interface ChatState {
 const DEFAULT_REFEICOES = ["almoco", "jantar"];
 const LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
 
-function _cleanList(items?: string[]): string[] {
-  if (!items?.length) return [];
+function _cleanList(items?: string[] | Record<string, unknown>): string[] {
+  if (!items) return [];
+  const raw = Array.isArray(items)
+    ? items
+    : Object.entries(items).map(([key, value]) => `${key}: ${String(value)}`);
+  if (!raw.length) return [];
   return Array.from(
     new Set(
-      items
+      raw
         .map((x) => String(x || "").trim())
         .filter(Boolean)
     )
@@ -151,6 +168,7 @@ export function useChatGenerator() {
     messages: [],
     contratos: [],
     contratoId: "",
+    contratoNome: "",
     contratoAnalise: null,
     dias: 5,
     refeicoes: DEFAULT_REFEICOES,
@@ -279,6 +297,29 @@ export function useChatGenerator() {
     });
   }
 
+  function updateMessage(
+    id: string,
+    updater: (msg: ChatMessage) => Partial<ChatMessage>
+  ) {
+    setState((s) => ({
+      ...s,
+      messages: s.messages.map((msg) =>
+        msg.id === id ? { ...msg, ...updater(msg) } : msg
+      ),
+    }));
+  }
+
+  function pipelineStepFromProgress(progress: number): number {
+    if (progress >= 100) return 7;
+    if (progress >= 92) return 6;
+    if (progress >= 75) return 5;
+    if (progress >= 60) return 4;
+    if (progress >= 45) return 3;
+    if (progress >= 30) return 2;
+    if (progress >= 15) return 1;
+    return 0;
+  }
+
   // ---------------------------------------------------------------------------
   // Actions
   // ---------------------------------------------------------------------------
@@ -293,41 +334,92 @@ export function useChatGenerator() {
     setState((prev) => ({
       ...prev,
       contratoId: id,
+      contratoNome: nome,
+      phase: "analysis",
       loadingAnalise: true,
     }));
 
     api.contratos
       .analise(id)
       .then((analise) => {
-        setState((prev) => ({ ...prev, contratoAnalise: analise }));
-        addAgentMessage(
-          "analysis",
-          `Analisei o contrato "${nome}". Aqui esta o que entendi:`,
-          { analysis: analise }
-        );
-        setState((prev) => ({
-          ...prev,
-          phase: "config-days",
-          loadingAnalise: false,
-        }));
-        setTimeout(() => {
-          addAgentMessage("text", "Para quantos dias deseja o cardapio?");
-        }, 400);
+        if (analise?.status === "analisado") {
+          finishContratoAnalysis(id, nome, analise);
+        } else {
+          analyzeContrato(id, nome);
+        }
       })
       .catch(() => {
-        addAgentMessage(
-          "analysis",
-          `Contrato "${nome}" selecionado. A analise sera feita durante a geracao.`,
-          { analysis: null }
-        );
+        analyzeContrato(id, nome);
+      });
+  }
+
+  function finishContratoAnalysis(id: string, nome: string, analise: ContratoAnalise) {
+    setState((prev) => ({
+      ...prev,
+      contratoId: id,
+      contratoNome: nome,
+      contratoAnalise: analise,
+      phase: "config-days",
+      loadingAnalise: false,
+      loading: false,
+    }));
+    addAgentMessage(
+      "analysis",
+      `Analisei o contrato "${nome}". Aqui esta o que entendi:`,
+      { analysis: analise }
+    );
+    setTimeout(() => {
+      addAgentMessage("text", "Para quantos dias deseja o cardapio?");
+    }, 400);
+  }
+
+  function analyzeContrato(id?: string, nome?: string, force = false) {
+    const s = stateRef.current!;
+    const contratoId = id || s.contratoId;
+    const contratoNome =
+      nome ||
+      s.contratoNome ||
+      s.contratos.find((c) => c.id === contratoId)?.nome ||
+      "Contrato";
+    if (!contratoId) return;
+
+    setState((prev) => ({
+      ...prev,
+      contratoId,
+      contratoNome,
+      phase: "analysis",
+      loading: true,
+      loadingAnalise: true,
+    }));
+
+    const progressMsgId = addAgentMessage(
+      "pipeline",
+      "Analisando contrato...",
+      { pipelineStep: 0, pipelineProgress: 15 }
+    );
+
+    api.contratos
+      .analisar(contratoId, { llm_model: s.llmModel || undefined, force })
+      .then((analise) => {
+        updateMessage(progressMsgId, () => ({
+          pipelineStep: 7,
+          pipelineProgress: 100,
+          content: "Analise do contrato concluida.",
+        }));
+        finishContratoAnalysis(contratoId, contratoNome, analise);
+      })
+      .catch((e) => {
         setState((prev) => ({
           ...prev,
-          phase: "config-days",
+          phase: "error",
+          loading: false,
           loadingAnalise: false,
         }));
-        setTimeout(() => {
-          addAgentMessage("text", "Para quantos dias deseja o cardapio?");
-        }, 400);
+        updateMessage(progressMsgId, () => ({
+          type: "error",
+          content: e.message || "Erro ao analisar contrato.",
+          erro: e.message || "Erro ao analisar contrato.",
+        }));
       });
   }
 
@@ -347,7 +439,9 @@ export function useChatGenerator() {
 
     addUserMessage(`Enviando: ${file.name}`);
     setState((prev) => ({ ...prev, phase: "uploading", loading: true }));
-    addAgentMessage("uploading", `Enviando ${file.name}...`);
+    const uploadMsgId = addAgentMessage("uploading", `Enviando ${file.name}...`, {
+      uploadProgress: 0,
+    });
 
     api.gerar
       .uploadWithFile(file, {
@@ -356,43 +450,41 @@ export function useChatGenerator() {
         target_custo_total: s.custoAlvo ? parseFloat(s.custoAlvo) : undefined,
         restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
         llm_model: s.llmModel || undefined,
+      }, (progress) => {
+        updateMessage(uploadMsgId, () => ({
+          uploadProgress: progress,
+          content: progress >= 100 ? "Upload 100% concluido." : `Enviando ${file.name}... ${progress}%`,
+        }));
       })
       .then((res) => {
-        const { job_id, contrato_id, contrato_nome, novo_contrato } = res;
+        const { contrato_id, contrato_nome, novo_contrato, tamanho_kb, analise_status } = res;
 
         setState((prev) => ({
           ...prev,
           contratoId: contrato_id,
-          jobId: job_id,
+          contratoNome: contrato_nome,
+          phase: "upload-confirm",
           loading: false,
         }));
 
-        if (novo_contrato) {
-          addAgentMessage("text", `Contrato "${contrato_nome}" cadastrado com sucesso!`);
-        } else {
-          addAgentMessage("text", `Contrato "${contrato_nome}" encontrado.`);
-        }
-
-        api.contratos
-          .analise(contrato_id)
-          .then((analise) => {
-            setState((prev) => ({ ...prev, contratoAnalise: analise }));
-            addAgentMessage("analysis", "Analise do contrato:", { analysis: analise });
-            setState((prev) => ({ ...prev, phase: "config-days" }));
-            setTimeout(() => {
-              addAgentMessage("text", "Para quantos dias deseja o cardapio?");
-            }, 400);
-          })
-          .catch(() => {
-            addAgentMessage("analysis", "Analise sera feita durante a geracao.", { analysis: null });
-            setState((prev) => ({ ...prev, phase: "config-days" }));
-            setTimeout(() => {
-              addAgentMessage("text", "Para quantos dias deseja o cardapio?");
-            }, 400);
-          });
+        addAgentMessage(
+          "upload-ready",
+          novo_contrato
+            ? `Contrato "${contrato_nome}" carregado.`
+            : `Contrato "${contrato_nome}" encontrado na base.`,
+          {
+            uploadData: {
+              contratoId: contrato_id,
+              contratoNome: contrato_nome,
+              novoContrato: novo_contrato,
+              tamanhoKb: tamanho_kb,
+              analiseStatus: analise_status,
+            },
+          }
+        );
       })
       .catch((e) => {
-        setState((prev) => ({ ...prev, phase: "welcome", loading: false }));
+        setState((prev) => ({ ...prev, phase: "error", loading: false }));
         addAgentMessage("error", e.message || "Erro ao enviar arquivo. Tente novamente.");
       });
   }
@@ -514,6 +606,7 @@ export function useChatGenerator() {
       restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
       refeicoes: s.refeicoes,
       llm_model: s.llmModel || undefined,
+      contrato_analise_confirmada: s.contratoAnalise?.status === "analisado",
     };
 
     api.gerar
@@ -542,76 +635,78 @@ export function useChatGenerator() {
 
     const es = new EventSource(api.gerar.streamUrl(jobId));
 
+    function finishSuccess() {
+      api.cardapios
+        .list(`job_id=${jobId}`)
+        .then((r) => {
+          const s = stateRef.current!;
+          const item = r.items?.[0] as Cardapio | undefined;
+          const resultData: ResultData = item
+            ? {
+                jobId,
+                cardapioId: item.id,
+                nome: item.nome || "Cardapio",
+                numDias: item.num_dias || s.dias,
+                custoMedioDia: item.custo_medio_dia || 0,
+              }
+            : {
+                jobId,
+                cardapioId: "",
+                nome: "Cardapio",
+                numDias: s.dias,
+                custoMedioDia: 0,
+              };
+          setState((prev) => ({
+            ...prev,
+            phase: "result",
+            loading: false,
+            cardapioId: item?.id || null,
+          }));
+          addAgentMessage("result", "Cardapio gerado com sucesso!", { resultData });
+        })
+        .catch(() => {
+          const s = stateRef.current!;
+          setState((prev) => ({ ...prev, phase: "result", loading: false }));
+          addAgentMessage("result", "Cardapio gerado com sucesso!", {
+            resultData: {
+              jobId,
+              cardapioId: "",
+              nome: "Cardapio",
+              numDias: s.dias,
+              custoMedioDia: 0,
+            },
+          });
+        });
+    }
+
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
         updateLastAgentMessage((msg) => {
           const updates: Partial<ChatMessage> = {};
+          const progress = data.progress ?? data.progresso;
           if (data.step !== undefined) updates.pipelineStep = data.step;
-          if (data.progresso !== undefined)
-            updates.pipelineProgress = data.progresso;
+          if (progress !== undefined) {
+            updates.pipelineProgress = progress;
+            if (data.step === undefined) updates.pipelineStep = pipelineStepFromProgress(progress);
+          }
+          if (data.message && data.type === "log") updates.pensamento = data.message;
           if (data.pensamento) updates.pensamento = data.pensamento;
+          if (data.thought) updates.pensamento = data.thought;
+          if (data.preview) updates.pensamento = data.preview;
           if (data.type === "aguardando_confirmacao") {
             updates.hitlData = {
               resumo: data.resumo,
               jobId: jobId,
             };
           }
-          if (data.status === "concluido") {
+          if (data.type === "done" || data.status === "concluido") {
             updates.pipelineStep = 7;
             updates.pipelineProgress = 100;
-
-            api.cardapios
-              .list(`job_id=${jobId}`)
-              .then((r) => {
-                if (r.items?.[0]) {
-                  const item = r.items[0] as Cardapio;
-                  const s = stateRef.current!;
-                  const resultData: ResultData = {
-                    jobId,
-                    cardapioId: item.id,
-                    nome: item.nome || "Cardapio",
-                    numDias: item.num_dias || s.dias,
-                    custoMedioDia: item.custo_medio_dia || 0,
-                  };
-                  setState((prev) => ({
-                    ...prev,
-                    phase: "result",
-                    loading: false,
-                    cardapioId: item.id,
-                  }));
-                  addAgentMessage(
-                    "result",
-                    "Cardapio gerado com sucesso!",
-                    { resultData }
-                  );
-                }
-              })
-              .catch(() => {
-                const s = stateRef.current!;
-                setState((prev) => ({
-                  ...prev,
-                  phase: "result",
-                  loading: false,
-                }));
-                addAgentMessage(
-                  "result",
-                  "Cardapio gerado com sucesso!",
-                  {
-                    resultData: {
-                      jobId,
-                      cardapioId: "",
-                      nome: "Cardapio",
-                      numDias: s.dias,
-                      custoMedioDia: 0,
-                    },
-                  }
-                );
-              });
           }
-          if (data.erro || data.status === "erro") {
+          if (data.erro || data.error || data.type === "error" || data.status === "erro") {
             setState((s) => ({ ...s, phase: "error", loading: false }));
-            updates.erro = data.erro || "Erro na geracao";
+            updates.erro = data.erro || data.error || data.message || "Erro na geracao";
             updates.content = updates.erro;
             updates.type = "error";
           }
@@ -622,7 +717,12 @@ export function useChatGenerator() {
           setState((s) => ({ ...s, phase: "hitl-confirm" }));
         }
 
-        if (data.status === "concluido" || data.status === "erro") {
+        if (data.type === "done" || data.status === "concluido") {
+          es.close();
+          finishSuccess();
+        }
+
+        if (data.type === "error" || data.status === "erro") {
           es.close();
         }
       } catch {
@@ -659,7 +759,7 @@ export function useChatGenerator() {
               .catch(() => {});
           } else if (s.status === "erro") {
             setState((prev) => ({ ...prev, phase: "error", loading: false }));
-            addAgentMessage("error", s.erro || "Erro na geracao");
+            addAgentMessage("error", s.erro || s.error || "Erro na geracao");
           } else {
             setTimeout(() => connectStream(jobId), 2000);
           }
@@ -679,6 +779,7 @@ export function useChatGenerator() {
       phase: "welcome",
       messages: [],
       contratoId: "",
+      contratoNome: "",
       contratoAnalise: null,
       dias: 5,
       refeicoes: DEFAULT_REFEICOES,
@@ -756,6 +857,7 @@ export function useChatGenerator() {
   return {
     state,
     selectContrato,
+    analyzeContrato,
     goToUpload,
     handleInlineUpload,
     setDias,

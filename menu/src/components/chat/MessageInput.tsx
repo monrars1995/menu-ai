@@ -66,8 +66,8 @@ export function MessageInput(props: MessageInputProps) {
     }
   }
 
-  // Welcome / analysis — contract selection + upload
-  if (phase === "welcome" || phase === "analysis") {
+  // Welcome — contract selection + upload
+  if (phase === "welcome") {
     return (
       <div className={stickyInputShell}>
         <div className="mx-auto max-w-2xl">
@@ -89,12 +89,18 @@ export function MessageInput(props: MessageInputProps) {
     );
   }
 
-  // Uploading — loading state
-  if (phase === "uploading") {
+  // Uploading / upload confirmation — status state
+  if (phase === "uploading" || phase === "upload-confirm" || phase === "analysis") {
     return (
       <div className={stickyInputShell}>
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-xs text-ink-muted-48">Enviando arquivo...</p>
+          <p className="text-xs text-ink-muted-48">
+            {phase === "uploading"
+              ? "Enviando arquivo..."
+              : phase === "analysis"
+              ? "Analisando contrato..."
+              : "Confirme a análise do contrato no cartão acima."}
+          </p>
         </div>
       </div>
     );

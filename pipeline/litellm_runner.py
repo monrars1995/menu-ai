@@ -242,6 +242,14 @@ def run_lite_pipeline(crew) -> str:
     steps = build_steps(crew)
     prior: List[str] = []
     last_out = ""
+    start_index = 0
+    if getattr(crew, "skip_contract_analysis", False) and getattr(crew.ctx, "regras_contrato", None):
+        start_index = 1
+        prior.append(
+            "## Analista de Contratos e Regras de Negócio\n"
+            "Regras do contrato já extraídas, revisadas e confirmadas antes da geração:\n"
+            + json.dumps(crew.ctx.regras_contrato, ensure_ascii=False, indent=2)
+        )
 
     # Tenta importar ModelRouter (fallback gracioso se falhar)
     _ModelRouter = None
@@ -250,7 +258,7 @@ def run_lite_pipeline(crew) -> str:
     except Exception:
         pass
 
-    for step_idx, st in enumerate(steps):
+    for step_idx, st in enumerate(steps[start_index:], start=start_index):
         ctx = ""
         if prior:
             acc = "\n\n".join(prior)

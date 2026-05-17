@@ -63,6 +63,7 @@ export default function GerarPage() {
   const {
     state,
     selectContrato,
+    analyzeContrato,
     goToUpload,
     handleInlineUpload,
     setDias,
@@ -79,7 +80,7 @@ export default function GerarPage() {
     setLlmModel,
   } = useChatGenerator();
 
-  const isWizardStart = state.phase === "welcome" || state.phase === "uploading";
+  const isWizardStart = state.phase === "welcome";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -93,12 +94,12 @@ export default function GerarPage() {
       </div>
 
       {isWizardStart ? (
-        <div className="flex-1 overflow-y-auto rounded-xl border border-hairline bg-white p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-5xl space-y-8">
-            <div>
-              <h1 className="text-3xl font-medium tracking-tight text-ink">Novo Cardápio</h1>
-              <p className="mt-2 text-sm text-ink-muted">
-                Comece selecionando um contrato existente ou faça upload de um novo PDF para análise.
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto flex min-h-[calc(100vh-11rem)] max-w-4xl flex-col items-center justify-center px-3 py-10 sm:px-6">
+            <div className="mb-8 text-center">
+              <h1 className="text-3xl font-medium tracking-tight text-ink sm:text-4xl">Por onde começamos?</h1>
+              <p className="mt-3 text-sm text-ink-muted">
+                Envie um contrato ou escolha um contrato salvo para iniciar a análise.
               </p>
             </div>
             <ContractUpload
@@ -121,6 +122,8 @@ export default function GerarPage() {
               pensamento={msg.pensamento}
               confirmData={msg.confirmData}
               resultData={msg.resultData}
+              uploadData={msg.uploadData}
+              uploadProgress={msg.uploadProgress}
               erro={msg.erro}
               onSelectContrato={selectContrato}
               loadingContratos={state.loadingContratos}
@@ -129,6 +132,7 @@ export default function GerarPage() {
               onAdjust={handleAdjust}
               onNewGeneration={handleNewGeneration}
               onConfirmHitl={confirmHitl}
+              onAnalyzeContrato={analyzeContrato}
             />
           ))}
         </ChatContainer>

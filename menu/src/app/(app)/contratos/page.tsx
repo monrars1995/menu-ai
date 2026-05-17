@@ -21,11 +21,18 @@ import { useRouter } from "next/navigation";
 
 /* ---------- helpers ---------- */
 
-function TagList({ items, color }: { items: string[]; color?: string }) {
-  if (!items?.length) return <p className="text-xs text-ink-muted-48 italic">Nenhum</p>;
+function TagList({ items, color }: { items?: string[] | Record<string, unknown> | boolean; color?: string }) {
+  const normalized = Array.isArray(items)
+    ? items
+    : typeof items === "boolean"
+    ? items ? ["Sim"] : []
+    : items
+    ? Object.entries(items).map(([key, value]) => `${key}: ${String(value)}`)
+    : [];
+  if (!normalized.length) return <p className="text-xs text-ink-muted-48 italic">Nenhum</p>;
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map((t, i) => (
+      {normalized.map((t, i) => (
         <span key={i} className={`rounded-md border px-2.5 py-0.5 text-xs font-medium ${color ?? "bg-surface-soft text-ink-muted-80 border-hairline"}`}>
           {t}
         </span>
