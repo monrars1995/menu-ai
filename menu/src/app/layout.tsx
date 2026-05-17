@@ -4,6 +4,8 @@ import { AuthProvider } from "@/lib/auth";
 import { ChunkErrorHandler } from "./chunk-handler";
 import "./globals.css";
 
+export const dynamic = "force-dynamic";
+
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
