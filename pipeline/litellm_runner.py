@@ -13,6 +13,7 @@ from typing import Any, List, Optional
 from litellm import completion
 
 from pipeline.llm_litellm import get_litellm_config
+from pipeline.llm_params import attach_temperature_if_supported
 from pipeline.sequential_spec import build_steps
 
 MAX_TOOL_TURNS = 32
@@ -185,8 +186,15 @@ def _run_with_tools(
             kwargs: dict = {
                 "model": model,
                 "messages": messages,
-                "temperature": float(os.getenv("LLM_TEMPERATURE", "0.7") or 0.7),
             }
+            req_temp = float(os.getenv("LLM_TEMPERATURE", "0.7") or 0.7)
+            provider = model.split("/", 1)[0] if "/" in model else None
+            attach_temperature_if_supported(
+                kwargs,
+                model_string=model,
+                provider=provider,
+                temperature=req_temp,
+            )
             if api_key:
                 kwargs["api_key"] = api_key
             if api_base:

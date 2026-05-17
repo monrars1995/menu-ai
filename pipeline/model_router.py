@@ -26,6 +26,7 @@ from litellm.exceptions import (
     ServiceUnavailableError,
     Timeout,
 )
+from pipeline.llm_params import attach_temperature_if_supported
 
 logger = logging.getLogger("menuai.model_router")
 
@@ -190,8 +191,13 @@ class ModelRouter:
             kwargs: dict = {
                 "model": cfg.model_string,
                 "messages": messages,
-                "temperature": temperature,
             }
+            attach_temperature_if_supported(
+                kwargs,
+                model_string=cfg.model_string,
+                provider=cfg.provider,
+                temperature=temperature,
+            )
             if cfg.api_key:
                 kwargs["api_key"] = cfg.api_key
             if cfg.api_base:
