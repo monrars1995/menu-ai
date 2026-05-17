@@ -188,8 +188,12 @@ def assert_llm_model_allowed_for_generation(db: "Session", model_id: Optional[st
             status_code=400,
             detail=f"Modelo LLM inválido: {mid}. Use um de: {list(_ID_TO_ENTRY.keys())}",
         )
-    if mid not in allowed_llm_model_ids():
-        return
+    # Valida também disponibilidade do provedor/chave antes de enfileirar o job.
+    # Sem isso, a falha só aparecia de forma tardia no worker assíncrono.
+    try:
+        _resolve_config(mid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not is_llm_model_enabled_in_db(db, mid):
         raise HTTPException(
             status_code=400,

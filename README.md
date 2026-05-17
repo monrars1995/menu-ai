@@ -1,4 +1,4 @@
-# Menu.AI v3.5.2
+# Menu.AI v3.5.3
 
 Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, PostgreSQL, OpenAI, Gemini e OpenRouter.
 
@@ -18,6 +18,8 @@ Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, Pos
   - `queen-3.6` -> `qwen/qwen3.6-plus`
   - `glm-5-1` -> `z-ai/glm-5.1`
   - `kimi-k2.5` -> `moonshotai/kimi-k2.5`
+
+Padrão de geração: OpenAI direto (`openai-gpt-5.5`) como modelo principal; Gemini direto e OpenRouter permanecem ativos no catálogo conforme chaves configuradas.
 
 ## Início rápido
 
