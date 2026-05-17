@@ -4,6 +4,7 @@ Menu.AI — Backend FastAPI v3.2.7
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
+import asyncio
 import json
 import os
 import queue
@@ -27,7 +28,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.5.3"
+APP_VERSION = "3.5.6"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -708,7 +709,7 @@ async def stream_job(request: Request, job_id: str, usuario: Optional[Usuario] =
         q = job_state.job_queues[job_id]
         while True:
             try:
-                msg = q.get(timeout=45)
+                msg = await asyncio.to_thread(q.get, True, 45)
                 yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
                 if msg.get("type") in ("done", "error"):
                     break
