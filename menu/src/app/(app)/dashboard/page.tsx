@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth";
 import api from "@/lib/api";
+import { useBaseInfo } from "@/lib/base-info-context";
 import { formatCurrency, statusBadge } from "@/lib/utils";
 import Link from "next/link";
 import {
@@ -26,23 +27,17 @@ function getGreeting(): string {
 
 export default function DashboardPage() {
   const { user, loading } = useAuth();
-  const [stats, setStats] = useState<{ fichas: number; ingredientes: number }>({ fichas: 0, ingredientes: 0 });
+  const { status: baseStatus, data: baseData, message: baseMessage } = useBaseInfo();
   const [recentCardapios, setRecentCardapios] = useState<Cardapio[]>([]);
-  const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
     // Aguarda a autenticação terminar antes de buscar dados
     if (loading) return;
 
-    setLoadingStats(true);
-    Promise.all([
-      api.info()
-        .then((r) => setStats({ fichas: r.total_fichas ?? 0, ingredientes: r.total_ingredientes ?? 0 }))
-        .catch(() => {}),
-      api.cardapios.list("per_page=5")
-        .then((r) => setRecentCardapios(r.items || []))
-        .catch(() => {}),
-    ]).finally(() => setLoadingStats(false));
+    api.cardapios
+      .list("per_page=5")
+      .then((r) => setRecentCardapios(r.items || []))
+      .catch(() => {});
   }, [loading, user]);
 
   const firstName = user?.nome?.split(" ")[0] || user?.email?.split("@")[0] || "Usuário";
@@ -61,6 +56,14 @@ export default function DashboardPage() {
         </h1>
         <p className="mt-2 text-sm text-ink-muted-48">
           Bem-vindo ao Menu.AI. Comece gerando um cardápio ou gerencie suas fichas.
+        </p>
+        <p
+          className={`mt-1 text-xs ${
+            baseStatus === "error" ? "text-red-700" : "text-ink-muted-48"
+          }`}
+          title={baseMessage}
+        >
+          {baseStatus === "loading" ? "Carregando base..." : baseStatus === "error" ? "Base indisponível" : `${baseMessage} no escopo atual.`}
         </p>
       </div>
 
@@ -84,7 +87,9 @@ export default function DashboardPage() {
             <BookOpen size={20} />
           </div>
           <div>
-            <p className="text-2xl font-medium text-ink">{loadingStats ? <SkeletonPulse /> : (stats.fichas ?? "—")}</p>
+            <p className="text-2xl font-medium text-ink">
+              {baseStatus === "loading" ? <SkeletonPulse /> : baseStatus === "error" ? "—" : (baseData.totalFichas ?? "—")}
+            </p>
             <p className="text-xs text-ink-muted-48">Fichas Técnicas</p>
             <p className="mt-0.5 flex items-center gap-1 text-[10px] text-ink-muted-48/60">
               <TrendingUp size={10} className="text-success" />
@@ -98,7 +103,9 @@ export default function DashboardPage() {
             <Salad size={20} />
           </div>
           <div>
-            <p className="text-2xl font-medium text-ink">{loadingStats ? <SkeletonPulse /> : (stats.ingredientes ?? "—")}</p>
+            <p className="text-2xl font-medium text-ink">
+              {baseStatus === "loading" ? <SkeletonPulse /> : baseStatus === "error" ? "—" : (baseData.totalIngredientes ?? "—")}
+            </p>
             <p className="text-xs text-ink-muted-48">Ingredientes</p>
             <p className="mt-0.5 flex items-center gap-1 text-[10px] text-ink-muted-48/60">
               <TrendingUp size={10} className="text-success" />

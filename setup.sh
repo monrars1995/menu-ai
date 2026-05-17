@@ -31,13 +31,13 @@ fi
 
 if grep -qE "^SUPABASE_DB_URL=postgres" .env 2>/dev/null; then
   step "Modo de banco detectado: Supabase"
-  warn "App e admin irão usar SUPABASE_DB_URL; o container postgres local torna-se opcional."
+  warn "App e admin irão usar SUPABASE_DB_URL; banco local via Docker é opcional."
 else
   step "Modo de banco detectado: PostgreSQL local Docker"
 fi
 
 step "Subindo stack completa"
-docker compose up -d --build postgres app admin pgadmin
+docker compose up -d --build
 
 step "Status dos serviços"
 docker compose ps

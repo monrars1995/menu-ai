@@ -3,12 +3,33 @@
 import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNavProvider, useMobileNav } from "@/components/layout/mobile-nav";
+import { BaseInfoProvider, useBaseInfo } from "@/lib/base-info-context";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { Menu } from "lucide-react";
 
+function BaseSummaryChip({ className = "" }: { className?: string }) {
+  const { status, message, title } = useBaseInfo();
+  const tone =
+    status === "ready"
+      ? "border-hairline text-ink-muted-48"
+      : status === "loading"
+      ? "border-hairline text-ink-muted-48"
+      : "border-red-200 text-red-700";
+
+  return (
+    <div
+      className={`inline-flex h-8 items-center rounded-md border bg-white px-3 text-xs ${tone} ${className}`}
+      title={title}
+    >
+      {message}
+    </div>
+  );
+}
+
 function AppChrome({ children }: { children: React.ReactNode }) {
   const { open, closeNav, openNav } = useMobileNav();
+  const { title } = useBaseInfo();
 
   return (
     <div className="flex min-h-screen min-h-[100dvh] bg-canvas">
@@ -35,10 +56,16 @@ function AppChrome({ children }: { children: React.ReactNode }) {
           <img src="/isotipo.svg" alt="" className="h-7 w-7 shrink-0" aria-hidden />
           <span className="truncate text-sm font-medium text-ink">Menu.AI</span>
         </div>
+        <div className="ml-auto max-w-[52vw]" title={title}>
+          <BaseSummaryChip className="max-w-full truncate" />
+        </div>
       </header>
 
       <Sidebar id="app-sidebar" />
       <main className="ml-0 flex w-full min-h-0 min-w-0 flex-1 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:ml-60 md:px-6 md:pb-6 md:pt-6">
+        <div className="mb-4 hidden items-center justify-end md:flex">
+          <BaseSummaryChip />
+        </div>
         {children}
       </main>
     </div>
@@ -71,7 +98,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <MobileNavProvider>
-      <AppChrome>{children}</AppChrome>
+      <BaseInfoProvider>
+        <AppChrome>{children}</AppChrome>
+      </BaseInfoProvider>
     </MobileNavProvider>
   );
 }
