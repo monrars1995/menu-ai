@@ -178,8 +178,10 @@ export function useChatGenerator() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamRetryCountRef = useRef<Record<string, number>>({});
+  const pollRetryCountRef = useRef<Record<string, number>>({});
   const activePipelineMessageIdRef = useRef<string | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
+  const finalizedJobsRef = useRef<Record<string, boolean>>({});
 
   // Refs to avoid stale closures in SSE callbacks
   const stateRef = useRef<ChatState | null>(null);
@@ -360,6 +362,12 @@ export function useChatGenerator() {
   function clearActiveGenerationRefs() {
     activePipelineMessageIdRef.current = null;
     activeJobIdRef.current = null;
+  }
+
+  function markJobFinalized(jobId: string): boolean {
+    if (finalizedJobsRef.current[jobId]) return false;
+    finalizedJobsRef.current[jobId] = true;
+    return true;
   }
 
   function updateActivePipelineMessage(
@@ -839,6 +847,7 @@ export function useChatGenerator() {
       .start(data)
       .then((res) => {
         const jobId = res.job_id as string;
+        finalizedJobsRef.current[jobId] = false;
         activeJobIdRef.current = jobId;
         streamRetryCountRef.current[jobId] = 0;
         setState((prev) => ({ ...prev, jobId }));
@@ -846,6 +855,8 @@ export function useChatGenerator() {
           pollJobStatus(jobId, skipContractAnalysis);
         } else {
           connectStream(jobId, skipContractAnalysis);
+          // Watchdog de status para não travar visualmente se o SSE cair em proxies/CDN.
+          setTimeout(() => pollJobStatus(jobId, skipContractAnalysis), 1200);
         }
 
         // Criar sessão de chat vinculada ao job
@@ -865,16 +876,14 @@ export function useChatGenerator() {
   }
 
   function pollJobStatus(jobId: string, skipContractAnalysis = false) {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+    if (activeJobIdRef.current && activeJobIdRef.current !== jobId) return;
     clearPollTimer();
 
     const tick = () => {
       api.gerar
         .status(jobId)
         .then((snapshot) => {
+          pollRetryCountRef.current[jobId] = 0;
           const progress = Number(snapshot?.progress ?? 0) || 0;
           const status = String(snapshot?.status || "");
           const erro = snapshot?.erro || snapshot?.error;
@@ -896,11 +905,14 @@ export function useChatGenerator() {
             setState((s) => ({ ...s, phase: "hitl-confirm", loading: false }));
           } else if (status === "concluido") {
             clearPollTimer();
-            resolveGenerationResult(jobId);
+            if (markJobFinalized(jobId)) {
+              resolveGenerationResult(jobId);
+            }
             return;
           } else if (status === "erro") {
             clearPollTimer();
             clearActiveGenerationRefs();
+            markJobFinalized(jobId);
             setState((s) => ({ ...s, phase: "error", loading: false }));
             if (erro) addAgentMessage("error", String(erro));
             return;
@@ -909,7 +921,15 @@ export function useChatGenerator() {
           pollTimerRef.current = setTimeout(tick, 2500);
         })
         .catch(() => {
-          pollTimerRef.current = setTimeout(tick, 3000);
+          const retries = (pollRetryCountRef.current[jobId] || 0) + 1;
+          pollRetryCountRef.current[jobId] = retries;
+          updateActivePipelineMessage(() => ({
+            pensamento:
+              retries >= 4
+                ? "Nao consegui ler o progresso em tempo real. Tentando reconectar automaticamente..."
+                : "Conexao instavel no streaming. Tentando sincronizar progresso...",
+          }));
+          pollTimerRef.current = setTimeout(tick, retries >= 4 ? 4500 : 3000);
         });
     };
 
@@ -924,7 +944,9 @@ export function useChatGenerator() {
     function finishSuccess() {
       streamRetryCountRef.current[jobId] = 0;
       clearPollTimer();
-      resolveGenerationResult(jobId);
+      if (markJobFinalized(jobId)) {
+        resolveGenerationResult(jobId);
+      }
     }
 
     es.onmessage = (e) => {
@@ -982,6 +1004,7 @@ export function useChatGenerator() {
 
         if (data.type === "error" || data.status === "erro") {
           es.close();
+          markJobFinalized(jobId);
           clearActiveGenerationRefs();
         }
       } catch {
@@ -1002,6 +1025,7 @@ export function useChatGenerator() {
         .then((s) => {
           if (s.status === "concluido") {
             clearActiveGenerationRefs();
+            if (!markJobFinalized(jobId)) return;
             setState((prev) => ({ ...prev, phase: "result", loading: false }));
             api.cardapios
               .list(`job_id=${jobId}`)
@@ -1027,6 +1051,7 @@ export function useChatGenerator() {
               .catch(() => {});
           } else if (s.status === "erro") {
             clearActiveGenerationRefs();
+            markJobFinalized(jobId);
             setState((prev) => ({ ...prev, phase: "error", loading: false }));
             addAgentMessage("error", s.erro || s.error || "Erro na geracao");
           } else {
