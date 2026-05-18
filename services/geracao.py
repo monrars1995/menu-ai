@@ -456,14 +456,11 @@ def executar_crew(
                     pass
 
             # Loop de espera (max 30 min)
-            import asyncio
-            import time
             _wait_start = time.time()
             _MAX_WAIT_SECONDS = 30 * 60  # 30 minutos
 
             while job_state.jobs[job_id].get("status") == "aguardando_confirmacao":
-                import time as _t
-                _t.sleep(2)
+                time.sleep(2)
                 elapsed = time.time() - _wait_start
                 if elapsed > _MAX_WAIT_SECONDS:
                     job_state.jobs[job_id]["status"] = "erro"

@@ -182,6 +182,8 @@ export function useChatGenerator() {
   const finalizedJobsRef = useRef<Record<string, boolean>>({});
   const generationStartedAtRef = useRef<number | null>(null);
   const lastRealtimeUpdateRef = useRef<number>(0);
+  const lastStatusSignatureRef = useRef<string>("");
+  const lastBackendProgressAtRef = useRef<number>(0);
 
   // Refs to avoid stale closures in SSE callbacks
   const stateRef = useRef<ChatState | null>(null);
@@ -395,6 +397,8 @@ export function useChatGenerator() {
     activeJobIdRef.current = null;
     generationStartedAtRef.current = null;
     lastRealtimeUpdateRef.current = 0;
+    lastStatusSignatureRef.current = "";
+    lastBackendProgressAtRef.current = 0;
     clearHeartbeatTimer();
   }
 
@@ -909,6 +913,8 @@ export function useChatGenerator() {
         activeJobIdRef.current = jobId;
         generationStartedAtRef.current = Date.now();
         lastRealtimeUpdateRef.current = Date.now();
+        lastBackendProgressAtRef.current = Date.now();
+        lastStatusSignatureRef.current = "";
         streamRetryCountRef.current[jobId] = 0;
         startLiveHeartbeat(jobId);
         setState((prev) => ({ ...prev, jobId }));
@@ -945,16 +951,29 @@ export function useChatGenerator() {
       api.gerar
         .status(jobId)
         .then((snapshot) => {
-          lastRealtimeUpdateRef.current = Date.now();
           pollRetryCountRef.current[jobId] = 0;
           const progress = Number(snapshot?.progress ?? 0) || 0;
           const status = String(snapshot?.status || "");
           const erro = snapshot?.error;
           const errorType = snapshot?.error_type;
+          const currentStep = snapshot?.current_step ? String(snapshot.current_step) : "";
+          const lastUpdateAtToken = snapshot?.last_update_at ? String(snapshot.last_update_at) : "";
+          const signature = [status, progress, currentStep, lastUpdateAtToken, String(errorType || ""), String(erro || "")].join("|");
+          if (signature !== lastStatusSignatureRef.current) {
+            lastStatusSignatureRef.current = signature;
+            lastRealtimeUpdateRef.current = Date.now();
+            lastBackendProgressAtRef.current = Date.now();
+          }
+
           const backendLastUpdateAt = snapshot?.last_update_at ? Date.parse(String(snapshot.last_update_at)) : NaN;
-          if (status === "executando" && Number.isFinite(backendLastUpdateAt)) {
-            const staleMs = Date.now() - Number(backendLastUpdateAt);
-            if (staleMs > STALE_SYNC_TIMEOUT_MS) {
+          if (status === "executando") {
+            const staleByBackend = Number.isFinite(backendLastUpdateAt)
+              ? Date.now() - Number(backendLastUpdateAt)
+              : 0;
+            const staleBySignature = lastBackendProgressAtRef.current
+              ? Date.now() - lastBackendProgressAtRef.current
+              : 0;
+            if (Math.max(staleByBackend, staleBySignature) > STALE_SYNC_TIMEOUT_MS) {
               failActiveGeneration(
                 "Geração parada no backend por tempo excessivo. Tente novamente, troque o modelo ou reduza os dias.",
                 "timeout_budget_exceeded"
@@ -1004,7 +1023,15 @@ export function useChatGenerator() {
 
           pollTimerRef.current = setTimeout(tick, 2500);
         })
-        .catch(() => {
+        .catch((error) => {
+          const statusCode = Number((error as any)?.status || 0);
+          if (statusCode === 401) {
+            failActiveGeneration(
+              "Sua sessão expirou durante a geração. Faça login novamente e tente de novo.",
+              "auth_required"
+            );
+            return;
+          }
           const retries = (pollRetryCountRef.current[jobId] || 0) + 1;
           pollRetryCountRef.current[jobId] = retries;
           updateActivePipelineMessage(() => ({
@@ -1149,7 +1176,15 @@ export function useChatGenerator() {
             setTimeout(() => connectStream(jobId, skipContractAnalysis), 2000);
           }
         })
-        .catch(() => {
+        .catch((error) => {
+          const statusCode = Number((error as any)?.status || 0);
+          if (statusCode === 401) {
+            failActiveGeneration(
+              "Sua sessão expirou durante a geração. Faça login novamente e tente de novo.",
+              "auth_required"
+            );
+            return;
+          }
           failActiveGeneration(
             "Falha ao recuperar status de geração. Verifique a conexão com a API e tente novamente.",
             "status_sync_failed"
