@@ -12,11 +12,11 @@ Uso:
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FutureTimeout
 import json
 import logging
 import os
+import queue
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
@@ -179,24 +179,36 @@ class ModelRouter:
         base_timeout = float(call_kwargs.get("timeout") or self.timeout_seconds or 55.0)
         hard_timeout = max(20.0, base_timeout + hard_extra)
         started_at = time.monotonic()
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(completion, **call_kwargs)
+        result_queue: "queue.Queue[tuple[str, Any]]" = queue.Queue(maxsize=1)
+
+        def _invoke_completion() -> None:
+            try:
+                result_queue.put(("result", completion(**call_kwargs)))
+            except BaseException as exc:  # pragma: no cover - repasse direto
+                result_queue.put(("error", exc))
+
+        worker = threading.Thread(
+            target=_invoke_completion,
+            name="menuai-llm-call",
+            daemon=True,
+        )
+        worker.start()
+        try:
             while True:
                 elapsed = time.monotonic() - started_at
                 remaining = hard_timeout - elapsed
                 if remaining <= 0:
-                    future.cancel()
                     raise TimeoutError(f"LLM hard-timeout excedido ({int(hard_timeout)}s)")
 
                 wait_window = min(heartbeat_seconds, max(0.5, remaining))
                 try:
-                    return future.result(timeout=wait_window)
-                except FutureTimeout as exc:
-                    if future.done():
-                        return future.result()
+                    event_type, payload = result_queue.get(timeout=wait_window)
+                    if event_type == "error":
+                        raise payload
+                    return payload
+                except queue.Empty as exc:
                     elapsed = time.monotonic() - started_at
                     if elapsed >= hard_timeout:
-                        future.cancel()
                         raise TimeoutError(f"LLM hard-timeout excedido ({int(hard_timeout)}s)") from exc
                     if self.on_attempt:
                         payload = {
@@ -210,6 +222,9 @@ class ModelRouter:
                             self.on_attempt(payload)
                         except Exception:
                             pass
+        finally:
+            # Worker é daemon; se a chamada subjacente ignorar timeout do SDK, não bloqueia o fluxo.
+            pass
 
     def _extract_usage(self, response) -> dict:
         """Extrai métricas de uso do response."""
