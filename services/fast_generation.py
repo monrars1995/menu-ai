@@ -46,6 +46,32 @@ OUTPUT_COLUMNS = [
     "Custo Gerencial (R$)",
 ]
 
+COMPACT_KEY_TO_COLUMN = {
+    "d": "Dia",
+    "r": "Refeição",
+    "pa": "Pão",
+    "r1": "Recheio 1",
+    "r2": "Recheio 2",
+    "ac": "Acompanhamento Café",
+    "bc": "Bebida Café",
+    "fc": "Fruta Café",
+    "pp": "Prato Proteico Principal",
+    "p2": "Opção Proteica 2",
+    "p3": "Opção Proteica 3",
+    "ar": "Arroz",
+    "fe": "Feijão",
+    "g1": "Guarnição 1",
+    "g2": "Guarnição 2",
+    "sg": "Salada Grãos",
+    "sc": "Salada Crua",
+    "sz": "Salada Cozida",
+    "sf": "Salada Folhosa/Elaborada",
+    "sb": "Sobremesa",
+    "bb": "Bebida",
+    "fr": "Fruta",
+    "tm": "Tema Especial",
+}
+
 SLOT_BUCKETS = {
     "Pão": "paes",
     "Recheio 1": "recheios",
@@ -399,10 +425,10 @@ def _resolve_prompt_catalog_limit(dias: int, refeicoes: list[str]) -> int:
             pass
     rows = max(1, dias * max(1, len(refeicoes)))
     if rows >= 60:
-        return 28
+        return 22
     if rows >= 30:
-        return 24
-    return 20
+        return 18
+    return 16
 
 
 def _compact_contract_rules_for_prompt(regras_contrato: dict[str, Any], max_chars: int) -> str:
@@ -455,6 +481,40 @@ def _extract_json(text: str) -> dict[str, Any]:
     return json.loads(content)
 
 
+def _expand_compact_row(raw: dict[str, Any]) -> dict[str, Any]:
+    """Aceita linha compacta e devolve linha com colunas operacionais completas."""
+    if not isinstance(raw, dict):
+        return {}
+
+    # Formato legado/completo já suportado.
+    if any(k in raw for k in ("Dia", "Refeição", "Refeicao")):
+        return raw
+
+    expanded: dict[str, Any] = {}
+    for short_key, full_key in COMPACT_KEY_TO_COLUMN.items():
+        if short_key in raw:
+            expanded[full_key] = raw.get(short_key)
+    if "dia" in raw and "Dia" not in expanded:
+        expanded["Dia"] = raw.get("dia")
+    if "refeicao" in raw and "Refeição" not in expanded:
+        expanded["Refeição"] = raw.get("refeicao")
+    return expanded or raw
+
+
+def _rows_from_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = payload.get("dias") or payload.get("cardapio") or payload.get("rows") or []
+    if isinstance(rows, dict):
+        rows = rows.get("dias") or rows.get("rows") or []
+    if not isinstance(rows, list):
+        raise ValueError("Resposta LLM sem lista 'dias'.")
+    normalized_rows: list[dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        normalized_rows.append(_expand_compact_row(item))
+    return normalized_rows
+
+
 def _message_content(response: Any) -> str:
     if not getattr(response, "choices", None):
         return ""
@@ -483,21 +543,22 @@ def _llm_generate(
 
     prompt_catalog_limit = _resolve_prompt_catalog_limit(dias, refeicoes)
     prompt_catalog = _catalog_for_prompt(catalog, limit=prompt_catalog_limit)
-    rules_max_chars_raw = (os.getenv("MENUAI_FAST_PROMPT_RULES_MAX_CHARS") or "2400").strip()
-    catalog_max_chars_raw = (os.getenv("MENUAI_FAST_PROMPT_CATALOG_MAX_CHARS") or "14000").strip()
+    rules_max_chars_raw = (os.getenv("MENUAI_FAST_PROMPT_RULES_MAX_CHARS") or "1800").strip()
+    catalog_max_chars_raw = (os.getenv("MENUAI_FAST_PROMPT_CATALOG_MAX_CHARS") or "9000").strip()
     try:
         rules_max_chars = max(500, int(rules_max_chars_raw))
     except ValueError:
-        rules_max_chars = 2400
+        rules_max_chars = 1800
     try:
         catalog_max_chars = max(3000, int(catalog_max_chars_raw))
     except ValueError:
-        catalog_max_chars = 14000
+        catalog_max_chars = 9000
     contract_rules_prompt = _compact_contract_rules_for_prompt(regras_contrato or {}, rules_max_chars)
 
     system = (
-        "Você é nutricionista de refeições coletivas. Gere cardápio operacional em JSON puro. "
-        "Use somente pratos existentes no catálogo. Não inclua markdown fora do JSON."
+        "Você é nutricionista de refeições coletivas. "
+        "Retorne APENAS JSON válido e compacto. "
+        "Use exclusivamente nomes existentes no catálogo permitido."
     )
     repair_block = f"\n\nCORRIJA A SAÍDA ANTERIOR:\n{repair_context}" if repair_context else ""
     user = (
@@ -508,47 +569,41 @@ def _llm_generate(
         f"Regras do contrato (resumo estruturado):\n{contract_rules_prompt}\n"
         f"Restrições adicionais:\n{restricoes_usuario or '-'}\n"
         f"Catálogo permitido (amostra otimizada):\n{json.dumps(prompt_catalog, ensure_ascii=False)[:catalog_max_chars]}\n\n"
-        "Retorne exatamente este JSON:\n"
+        "Retorne exatamente este JSON compacto (sem markdown):\n"
         "{\n"
         '  "dias": [\n'
         "    {\n"
-        '      "Dia": 1,\n'
-        '      "Refeição": "Almoço",\n'
-        '      "Pão": "-",\n'
-        '      "Recheio 1": "-",\n'
-        '      "% Consumo Recheio 1": "-",\n'
-        '      "Recheio 2": "-",\n'
-        '      "% Consumo Recheio 2": "-",\n'
-        '      "Acompanhamento Café": "-",\n'
-        '      "Bebida Café": "-",\n'
-        '      "Fruta Café": "-",\n'
-        '      "Prato Proteico Principal": "nome do prato",\n'
-        '      "% Consumo Principal": 70,\n'
-        '      "Opção Proteica 2": "nome do prato",\n'
-        '      "% Consumo Opção 2": 20,\n'
-        '      "Opção Proteica 3": "nome do prato",\n'
-        '      "% Consumo Opção 3": 10,\n'
-        '      "Arroz": "nome do prato",\n'
-        '      "Feijão": "nome do prato",\n'
-        '      "Guarnição 1": "nome do prato",\n'
-        '      "Guarnição 2": "nome do prato",\n'
-        '      "Salada Grãos": "nome do prato ou -",\n'
-        '      "Salada Crua": "nome do prato",\n'
-        '      "Salada Cozida": "nome do prato",\n'
-        '      "Salada Folhosa/Elaborada": "nome do prato",\n'
-        '      "Sobremesa": "nome do prato ou -",\n'
-        '      "Bebida": "nome do prato ou -",\n'
-        '      "Fruta": "nome do prato ou -",\n'
-        '      "Tema Especial": "tema ou -",\n'
-        '      "Custo Gerencial (R$)": 0\n'
+        '      "d": 1,\n'
+        '      "r": "Almoço",\n'
+        '      "pp": "nome do prato",\n'
+        '      "p2": "nome do prato ou -",\n'
+        '      "p3": "nome do prato ou -",\n'
+        '      "ar": "nome do prato",\n'
+        '      "fe": "nome do prato",\n'
+        '      "g1": "nome do prato",\n'
+        '      "g2": "nome do prato ou -",\n'
+        '      "sg": "nome do prato ou -",\n'
+        '      "sc": "nome do prato",\n'
+        '      "sz": "nome do prato ou -",\n'
+        '      "sf": "nome do prato ou -",\n'
+        '      "sb": "nome do prato ou -",\n'
+        '      "bb": "nome do prato ou -",\n'
+        '      "fr": "nome do prato ou -",\n'
+        '      "tm": "tema ou -",\n'
+        '      "pa": "-",\n'
+        '      "r1": "-",\n'
+        '      "r2": "-",\n'
+        '      "ac": "-",\n'
+        '      "bc": "-",\n'
+        '      "fc": "-"\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
-        "Regras: gere todos os dias; evite repetir prato proteico principal em dias consecutivos; "
-        "mantenha opção vegetariana quando contrato exigir; use '-' só se não houver opção no catálogo. "
-        "Para desjejum/café da manhã, preencha os campos Pão/Recheio/Acompanhamento Café/Bebida Café/Fruta Café "
-        "e deixe campos de almoço como '-'. Para almoço/jantar, faça o inverso. "
-        "Calibre % Consumo das opções para equilibrar custo: normalmente 70/20/10 ou 80/20/0."
+        "Regras críticas: gere TODAS as combinações de dia x refeição; "
+        "evite repetir o prato proteico principal em dias consecutivos; "
+        "respeite regras contratuais e de dieta; use '-' apenas quando não houver opção viável no catálogo; "
+        "para café/desjejum, preencha pa/r1/r2/ac/bc/fc e deixe slots de almoço como '-'; "
+        "para almoço/jantar, faça o inverso."
         f"{repair_block}"
     )
     prompt_chars = len(system) + len(user)
@@ -575,9 +630,7 @@ def _llm_generate(
         raise RuntimeError(result.error or "Falha ao chamar LLM no modo rápido.")
     content = _message_content(result.response)
     payload = _extract_json(content)
-    rows = payload.get("dias") or payload.get("cardapio") or []
-    if not isinstance(rows, list):
-        raise ValueError("Resposta LLM sem lista 'dias'.")
+    rows = _rows_from_payload(payload)
     return rows, content, {
         "model_id": result.model_id,
         "model_used": result.model_used,
@@ -782,8 +835,7 @@ def _persist_cardapio(
     prompt_catalog_limit: Optional[int] = None,
 ) -> str:
     from database.models import Cardapio, CardapioDia, CardapioRefeicao, JobAgente
-    from services.knowledge_base import sync_cardapio_document
-    from services.knowledge_hooks import sync_knowledge_safe
+    from services.knowledge_hooks import sync_cardapio_document_async
 
     lookup = _candidate_lookup(catalog)
     cardapio = Cardapio(
@@ -876,8 +928,8 @@ def _persist_cardapio(
         job_db.concluido_em = datetime.utcnow()
         job_db.updated_at = datetime.utcnow()
 
-    sync_knowledge_safe(sync_cardapio_document, db, cardapio)
     db.commit()
+    sync_cardapio_document_async(str(cardapio.id))
     return str(cardapio.id)
 
 
@@ -906,8 +958,8 @@ def run_fast_generation(
     db = SessionLocal()
     try:
         budget_seconds_raw = (os.getenv("MENUAI_FAST_BUDGET_SECONDS") or "300").strip()
-        per_call_timeout_raw = (os.getenv("MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS") or "55").strip()
-        max_attempts_raw = (os.getenv("MENUAI_FAST_LLM_MAX_ATTEMPTS") or "3").strip()
+        per_call_timeout_raw = (os.getenv("MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS") or "45").strip()
+        max_attempts_raw = (os.getenv("MENUAI_FAST_LLM_MAX_ATTEMPTS") or "2").strip()
         try:
             budget_seconds = max(60.0, float(budget_seconds_raw))
         except ValueError:
@@ -915,11 +967,11 @@ def run_fast_generation(
         try:
             per_call_timeout = max(20.0, float(per_call_timeout_raw))
         except ValueError:
-            per_call_timeout = 55.0
+            per_call_timeout = 45.0
         try:
             max_attempts = max(1, int(max_attempts_raw))
         except ValueError:
-            max_attempts = 3
+            max_attempts = 2
 
         def touch_job(step_hint: Optional[str] = None) -> None:
             job = job_state.jobs.get(job_id)
@@ -1021,6 +1073,7 @@ def run_fast_generation(
             llm_prompt_catalog_limit = int(call_meta.get("prompt_catalog_limit") or 0) or llm_prompt_catalog_limit
         except Exception as exc:
             warnings.append(f"Geração LLM inicial falhou; usada rotação determinística. Erro: {exc}")
+            progress(66, "⚙️ Modelo indisponível no momento. Aplicando fallback determinístico rápido...", "Sistema")
             rows = _deterministic_rows(catalog, dias, refeicoes_norm)
             raw_response = ""
 
@@ -1034,7 +1087,8 @@ def run_fast_generation(
         )
         warnings.extend(validation_warnings)
 
-        if validation_warnings and raw_response:
+        repair_enabled = (os.getenv("MENUAI_FAST_ENABLE_REPAIR") or "false").strip().lower() == "true"
+        if repair_enabled and validation_warnings and raw_response:
             ensure_budget("repair_llm_generation", reserve_seconds=8)
             progress(82, "🛠️ Ajustando automaticamente inconsistências do cardápio...", "Nutricionista")
             try:

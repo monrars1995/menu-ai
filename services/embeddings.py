@@ -40,6 +40,11 @@ def _client() -> OpenAI:
     base_url = embedding_base_url()
     if base_url:
         kwargs["base_url"] = base_url
+    timeout_raw = (os.getenv("EMBEDDING_REQUEST_TIMEOUT_SECONDS") or "12").strip()
+    try:
+        kwargs["timeout"] = max(3.0, float(timeout_raw))
+    except ValueError:
+        kwargs["timeout"] = 12.0
     return OpenAI(**kwargs)
 
 

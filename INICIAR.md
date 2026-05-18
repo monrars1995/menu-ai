@@ -33,6 +33,11 @@ GEMINI_API_KEY=SUA_CHAVE_GEMINI
 OPENROUTER_API_KEY=sk-or-v1-SUA_CHAVE_OPENROUTER
 MENUAI_DEFAULT_LLM_MODEL=openai-gpt-5.5
 MENUAI_GENERATION_MODE=fast
+MENUAI_FAST_BUDGET_SECONDS=300
+MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS=45
+MENUAI_FAST_LLM_MAX_ATTEMPTS=2
+MENUAI_FAST_ENABLE_REPAIR=false
+MENUAI_SYNC_KNOWLEDGE_ON_GENERATION=false
 ```
 
 Catálogo inicial da aplicação:
@@ -55,6 +60,7 @@ EMBEDDING_API_KEY=...
 EMBEDDING_MODEL=openai/text-embedding-3-small
 EMBEDDING_DIMENSION=1536
 EMBEDDING_BASE_URL=https://openrouter.ai/api/v1
+EMBEDDING_REQUEST_TIMEOUT_SECONDS=12
 ```
 
 Para ORM e migrações, prefira direct connection ou Supavisor session mode. A documentação do Supabase diferencia isso de transaction mode.

@@ -183,16 +183,16 @@ def executar_crew(
         stuck_threshold_seconds = 90.0
     generation_mode_effective = (generation_mode or os.getenv("MENUAI_GENERATION_MODE", "fast") or "fast").strip().lower()
     if generation_mode_effective == "fast":
-        fast_attempt_timeout_raw = (os.getenv("MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS") or "55").strip()
-        fast_max_attempts_raw = (os.getenv("MENUAI_FAST_LLM_MAX_ATTEMPTS") or "3").strip()
+        fast_attempt_timeout_raw = (os.getenv("MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS") or "45").strip()
+        fast_max_attempts_raw = (os.getenv("MENUAI_FAST_LLM_MAX_ATTEMPTS") or "2").strip()
         try:
             fast_attempt_timeout = max(20.0, float(fast_attempt_timeout_raw))
         except ValueError:
-            fast_attempt_timeout = 55.0
+            fast_attempt_timeout = 45.0
         try:
             fast_max_attempts = max(1, int(fast_max_attempts_raw))
         except ValueError:
-            fast_max_attempts = 3
+            fast_max_attempts = 2
         # Evita falso positivo do watchdog durante chamadas LLM longas com fallback.
         stuck_threshold_seconds = max(
             stuck_threshold_seconds,
@@ -577,8 +577,7 @@ def executar_crew(
             try:
                 from database.connection import SessionLocal
                 from database.models import Cardapio, JobAgente
-                from services.knowledge_base import sync_cardapio_document
-                from services.knowledge_hooks import sync_knowledge_safe
+                from services.knowledge_hooks import sync_cardapio_document_async
 
                 db = SessionLocal()
                 job_db = db.query(JobAgente).filter(JobAgente.job_id == job_id).first()
@@ -613,9 +612,9 @@ def executar_crew(
                         job_db.cardapio_id = cardapio_db.id
                     job_db.concluido_em = datetime.utcnow()
                     job_db.updated_at = datetime.utcnow()
-                if cardapio_db is not None:
-                    sync_knowledge_safe(sync_cardapio_document, db, cardapio_db)
                 db.commit()
+                if cardapio_db is not None:
+                    sync_cardapio_document_async(str(cardapio_db.id))
                 db.close()
                 if empresa_id:
                     print(f"✅ Cardápio e job salvos no banco (job_id={job_id})")

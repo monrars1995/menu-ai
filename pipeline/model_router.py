@@ -46,6 +46,7 @@ _FATAL_ERRORS = (AuthenticationError,)
 
 # Número máximo de tentativas (primário + fallbacks)
 MAX_ATTEMPTS = 3
+_PROVIDER_BACKOFF_UNTIL: Dict[str, float] = {}
 
 
 @dataclass
@@ -114,6 +115,38 @@ class ModelRouter:
             **fields,
         }
         logger.info("model_router=%s", json.dumps(payload, ensure_ascii=False, default=str))
+
+    def _provider_backoff_seconds(self, provider: str) -> float:
+        key = f"MENUAI_LLM_{provider.upper()}_BACKOFF_SECONDS"
+        raw = (os.getenv(key) or os.getenv("MENUAI_LLM_PROVIDER_BACKOFF_SECONDS") or "").strip()
+        default_map = {
+            "openrouter": 900.0,
+            "gemini": 180.0,
+            "openai": 120.0,
+        }
+        default_value = default_map.get(provider, 120.0)
+        if not raw:
+            return default_value
+        try:
+            return max(30.0, float(raw))
+        except ValueError:
+            return default_value
+
+    def _provider_is_backed_off(self, provider: str) -> tuple[bool, int]:
+        until = float(_PROVIDER_BACKOFF_UNTIL.get(provider, 0.0) or 0.0)
+        now = time.monotonic()
+        if until > now:
+            return True, int(until - now)
+        return False, 0
+
+    def _mark_provider_backoff(self, provider: str, seconds: float, reason: str) -> None:
+        _PROVIDER_BACKOFF_UNTIL[provider] = time.monotonic() + max(30.0, seconds)
+        self._structured_log(
+            "provider_backoff_set",
+            provider=provider,
+            reason=reason,
+            backoff_seconds=int(max(30.0, seconds)),
+        )
 
     def _resolve_model_config(self, model_id: str):
         """Resolve configuração completa para um dado model_id."""
@@ -273,6 +306,38 @@ class ModelRouter:
                 "model": cfg.model_string,
                 "messages": messages,
             }
+            provider_blocked, provider_retry_after = self._provider_is_backed_off(cfg.provider)
+            if provider_blocked:
+                msg = (
+                    f"Provider {cfg.provider} em backoff por falhas recentes "
+                    f"(retry em ~{provider_retry_after}s)."
+                )
+                self._structured_log(
+                    "attempt_skipped_provider_backoff",
+                    attempt=attempt_idx + 1,
+                    model_id=mid,
+                    provider=cfg.provider,
+                    retry_after_seconds=provider_retry_after,
+                )
+                if self.on_attempt:
+                    try:
+                        self.on_attempt(
+                            {
+                                "event": "attempt_skipped",
+                                "attempt": attempt_idx + 1,
+                                "max_attempts": len(models_to_try),
+                                "model_id": mid,
+                                "model_string": cfg.model_string,
+                                "provider": cfg.provider,
+                                "fallback": is_fallback,
+                                "reason": msg,
+                            }
+                        )
+                    except Exception:
+                        pass
+                result.error = msg
+                result.error_type = "provider_backoff"
+                continue
             kwargs["timeout"] = float(self.timeout_seconds)
             kwargs["request_timeout"] = float(self.timeout_seconds)
             attach_temperature_if_supported(
@@ -404,6 +469,11 @@ class ModelRouter:
                 # Erro fatal: não tenta fallback
                 elapsed_ms = int(time.time() * 1000) - start_ms
                 logger.error("Erro fatal no modelo %s: %s", mid, fatal)
+                self._mark_provider_backoff(
+                    cfg.provider,
+                    self._provider_backoff_seconds(cfg.provider),
+                    reason="fatal_auth_error",
+                )
                 self._log_attempt(
                     model_requested=original_model,
                     model_used=cfg.model_string,
@@ -447,6 +517,12 @@ class ModelRouter:
                 )
                 result.error = str(retriable)
                 result.error_type = self._classify_error(retriable)
+                if isinstance(retriable, RateLimitError):
+                    self._mark_provider_backoff(
+                        cfg.provider,
+                        self._provider_backoff_seconds(cfg.provider),
+                        reason="rate_limit",
+                    )
                 self._structured_log(
                     "attempt_retriable_error",
                     attempt=attempt_idx + 1,

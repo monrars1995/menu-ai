@@ -1,4 +1,4 @@
-# Menu.AI v3.6.1
+# Menu.AI v3.6.14
 
 Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, PostgreSQL, OpenAI, Gemini e OpenRouter.
 
@@ -22,6 +22,12 @@ Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, Pos
 Padrão de geração: OpenAI direto (`openai-gpt-5.5`) como modelo principal; Gemini direto e OpenRouter permanecem ativos no catálogo conforme chaves configuradas. O modo padrão de cardápio é `MENUAI_GENERATION_MODE=fast`, com pipeline completo legado disponível por `generation_mode="full"`.
 
 Após a geração, o cardápio é apresentado no chat com prévia operacional, custo gerencial e ações de aprovação ou nova geração. O XLSX exportado inclui abas no formato padrão de refeição/desjejum com pares de colunas de prato e `% Consumo`, além da matriz completa, lista de compras e resumos.
+
+Confiabilidade/performance do modo `fast`:
+- orçamento total padrão de 5 minutos (`MENUAI_FAST_BUDGET_SECONDS=300`)
+- timeout por tentativa LLM reduzido (`MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS=45`)
+- fallback determinístico rápido quando provedores indisponíveis
+- sincronização vetorial pós-geração fora do caminho crítico (`MENUAI_SYNC_KNOWLEDGE_ON_GENERATION=false`)
 
 ## Início rápido
 
