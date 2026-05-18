@@ -67,6 +67,7 @@ export function MessageInput(props: MessageInputProps) {
   }
 
   function handleSendChat() {
+    if (phase === "generating") return;
     const message = chatDraft.trim();
     if (!message) return;
     props.onSendMessage?.(message);
@@ -294,6 +295,7 @@ export function MessageInput(props: MessageInputProps) {
 
   // Generating / result / error / hitl-confirm — Free chat input
   if (phase === "generating" || phase === "result" || phase === "error" || phase === "hitl-confirm") {
+    const chatDisabled = phase === "generating";
     return (
       <div className={stickyInputShell}>
         <div className="mx-auto max-w-2xl">
@@ -302,14 +304,22 @@ export function MessageInput(props: MessageInputProps) {
               value={chatDraft}
               onChange={(e) => setChatDraft(e.target.value)}
               onKeyDown={handleChatKeyDown}
+              disabled={chatDisabled}
               placeholder={phase === "hitl-confirm" ? "Ajuste os dados antes de confirmar..." : "Envie uma instrução ou refinamento..."}
               rows={1}
-              className="min-h-[2.5rem] max-h-[8rem] w-full resize-none rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)] sm:flex-1"
+              className={cn(
+                "min-h-[2.5rem] max-h-[8rem] w-full resize-none rounded-md border border-hairline bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-muted-48 focus:border-info-border focus:outline-none focus:ring-2 focus:ring-[rgba(69,143,255,0.35)] sm:flex-1",
+                chatDisabled && "cursor-not-allowed bg-surface-soft text-ink-muted-48"
+              )}
             />
             <div className="flex shrink-0 justify-end gap-2">
               <button
                 onClick={handleSendChat}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border"
+                disabled={chatDisabled || !chatDraft.trim()}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border",
+                  (chatDisabled || !chatDraft.trim()) && "cursor-not-allowed opacity-50"
+                )}
               >
                 <Send size={14} />
               </button>

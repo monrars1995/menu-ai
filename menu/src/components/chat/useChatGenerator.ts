@@ -178,6 +178,8 @@ export function useChatGenerator() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamRetryCountRef = useRef<Record<string, number>>({});
+  const activePipelineMessageIdRef = useRef<string | null>(null);
+  const activeJobIdRef = useRef<string | null>(null);
 
   // Refs to avoid stale closures in SSE callbacks
   const stateRef = useRef<ChatState | null>(null);
@@ -355,6 +357,22 @@ export function useChatGenerator() {
     }
   }
 
+  function clearActiveGenerationRefs() {
+    activePipelineMessageIdRef.current = null;
+    activeJobIdRef.current = null;
+  }
+
+  function updateActivePipelineMessage(
+    updater: (msg: ChatMessage) => Partial<ChatMessage>
+  ) {
+    const currentId = activePipelineMessageIdRef.current;
+    if (currentId) {
+      updateMessage(currentId, updater);
+      return;
+    }
+    updateLastAgentMessage(updater);
+  }
+
   function pipelineStepFromProgress(progress: number): number {
     if (progress >= 100) return 7;
     if (progress >= 92) return 6;
@@ -458,6 +476,7 @@ export function useChatGenerator() {
               numDias: s.dias,
               custoMedioDia: 0,
             };
+        clearActiveGenerationRefs();
         setState((prev) => ({
           ...prev,
           phase: "result",
@@ -472,6 +491,7 @@ export function useChatGenerator() {
       })
       .catch(() => {
         const s = stateRef.current!;
+        clearActiveGenerationRefs();
         setState((prev) => ({ ...prev, phase: "result", loading: false }));
         addAgentMessage("result", "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.", {
           resultData: {
@@ -773,9 +793,20 @@ export function useChatGenerator() {
   }
 
   function startGeneration() {
+    const s = stateRef.current!;
+    if (s.loading && s.phase === "generating") {
+      addAgentMessage("text", "A geracao ja esta em andamento. Aguarde a conclusao.");
+      return;
+    }
+
     addUserMessage("Gerar cardapio!");
 
-    const s = stateRef.current!;
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    clearPollTimer();
+
     const skipContractAnalysis = Boolean(
       s.contratoAnaliseConfirmada ||
       s.contratoAnalise?.status === "analisado" ||
@@ -783,11 +814,13 @@ export function useChatGenerator() {
     );
     setState((prev) => ({ ...prev, phase: "generating", loading: true }));
 
-    addAgentMessage(
+    const pipelineMsgId = addAgentMessage(
       "pipeline",
       "Gerando cardapio...",
       { pipelineStep: skipContractAnalysis ? 1 : 0, pipelineProgress: 0 }
     );
+    activePipelineMessageIdRef.current = pipelineMsgId;
+    activeJobIdRef.current = null;
 
     const data = {
       dias: s.dias,
@@ -806,8 +839,9 @@ export function useChatGenerator() {
       .start(data)
       .then((res) => {
         const jobId = res.job_id as string;
+        activeJobIdRef.current = jobId;
+        streamRetryCountRef.current[jobId] = 0;
         setState((prev) => ({ ...prev, jobId }));
-        clearPollTimer();
         if (shouldUsePollingTransport()) {
           pollJobStatus(jobId, skipContractAnalysis);
         } else {
@@ -821,10 +855,12 @@ export function useChatGenerator() {
       })
       .catch((e) => {
         setState((s) => ({ ...s, phase: "error", loading: false }));
-        addAgentMessage(
-          "error",
-          `Erro ao iniciar geracao: ${e.message || "Tente novamente."}`
-        );
+        updateActivePipelineMessage(() => ({
+          type: "error",
+          content: `Erro ao iniciar geracao: ${e.message || "Tente novamente."}`,
+          erro: e.message || "Erro ao iniciar geracao",
+        }));
+        clearActiveGenerationRefs();
       });
   }
 
@@ -843,7 +879,7 @@ export function useChatGenerator() {
           const status = String(snapshot?.status || "");
           const erro = snapshot?.erro || snapshot?.error;
 
-          updateLastAgentMessage((msg) => {
+          updateActivePipelineMessage((msg) => {
             const updates: Partial<ChatMessage> = {
               pipelineProgress: progress,
               pipelineStep: pipelineStepFromProgressWithContext(progress, skipContractAnalysis),
@@ -857,13 +893,14 @@ export function useChatGenerator() {
           });
 
           if (status === "aguardando_confirmacao") {
-            setState((s) => ({ ...s, phase: "hitl-confirm" }));
+            setState((s) => ({ ...s, phase: "hitl-confirm", loading: false }));
           } else if (status === "concluido") {
             clearPollTimer();
             resolveGenerationResult(jobId);
             return;
           } else if (status === "erro") {
             clearPollTimer();
+            clearActiveGenerationRefs();
             setState((s) => ({ ...s, phase: "error", loading: false }));
             if (erro) addAgentMessage("error", String(erro));
             return;
@@ -895,7 +932,10 @@ export function useChatGenerator() {
         const data = JSON.parse(e.data);
         if (data.type === "ping") return;
         streamRetryCountRef.current[jobId] = 0;
-        updateLastAgentMessage((msg) => {
+        if (activeJobIdRef.current && activeJobIdRef.current !== jobId) {
+          return;
+        }
+        updateActivePipelineMessage((msg) => {
           const updates: Partial<ChatMessage> = {};
           const progress = data.progress ?? data.progresso;
           if (data.step !== undefined) updates.pipelineStep = data.step;
@@ -932,7 +972,7 @@ export function useChatGenerator() {
         });
 
         if (data.type === "aguardando_confirmacao") {
-          setState((s) => ({ ...s, phase: "hitl-confirm" }));
+          setState((s) => ({ ...s, phase: "hitl-confirm", loading: false }));
         }
 
         if (data.type === "done" || data.status === "concluido") {
@@ -942,6 +982,7 @@ export function useChatGenerator() {
 
         if (data.type === "error" || data.status === "erro") {
           es.close();
+          clearActiveGenerationRefs();
         }
       } catch {
         // ignore parse errors
@@ -960,6 +1001,7 @@ export function useChatGenerator() {
         .status(jobId)
         .then((s) => {
           if (s.status === "concluido") {
+            clearActiveGenerationRefs();
             setState((prev) => ({ ...prev, phase: "result", loading: false }));
             api.cardapios
               .list(`job_id=${jobId}`)
@@ -984,6 +1026,7 @@ export function useChatGenerator() {
               })
               .catch(() => {});
           } else if (s.status === "erro") {
+            clearActiveGenerationRefs();
             setState((prev) => ({ ...prev, phase: "error", loading: false }));
             addAgentMessage("error", s.erro || s.error || "Erro na geracao");
           } else {
@@ -991,6 +1034,7 @@ export function useChatGenerator() {
           }
         })
         .catch(() => {
+          clearActiveGenerationRefs();
           setState((s) => ({ ...s, phase: "error", loading: false }));
         });
     };
@@ -1001,6 +1045,7 @@ export function useChatGenerator() {
   function handleNewGeneration() {
     if (eventSourceRef.current) eventSourceRef.current.close();
     clearPollTimer();
+    clearActiveGenerationRefs();
     setState((s) => ({
       ...s,
       phase: "welcome",
@@ -1027,6 +1072,7 @@ export function useChatGenerator() {
   function regenerateCardapio() {
     if (eventSourceRef.current) eventSourceRef.current.close();
     clearPollTimer();
+    clearActiveGenerationRefs();
     startGeneration();
   }
 
@@ -1094,20 +1140,47 @@ export function useChatGenerator() {
   }
 
   function sendChatMessage(text: string) {
-    if (!text.trim()) return;
+    const cleanText = text.trim();
+    if (!cleanText) return;
     const s = stateRef.current!;
+
+    if (s.phase === "generating") {
+      addAgentMessage("text", "A geracao esta em andamento. Aguarde concluir para pedir ajustes.");
+      return;
+    }
+
+    if (s.phase === "hitl-confirm") {
+      const normalized = cleanText.toLowerCase();
+      const noAdjustCommands = new Set([
+        "ok",
+        "sim",
+        "continue",
+        "continuar",
+        "pode seguir",
+        "segue",
+        "prosseguir",
+        "confirmo",
+      ]);
+      const ajustes = noAdjustCommands.has(normalized) ? undefined : cleanText;
+      confirmHitl(true, ajustes);
+      return;
+    }
+
     if (!s.sessaoId) {
       addAgentMessage("error", "Sessão de chat não encontrada.");
       return;
     }
 
-    addUserMessage(text);
+    addUserMessage(cleanText);
     setState((prev) => ({ ...prev, loading: true }));
 
-    api.chat.refinarAnalise(s.sessaoId, text)
+    api.chat.refinarAnalise(s.sessaoId, cleanText)
       .then(() => {
         setState((prev) => ({ ...prev, loading: false }));
-        addAgentMessage("pipeline", "Refinando análise...", { pensamento: "Processando as novas instruções e ajustando o contexto do contrato..." });
+        addAgentMessage(
+          "text",
+          "Entendi os ajustes. Eles serao considerados na proxima geracao."
+        );
       })
       .catch((e) => {
         setState((prev) => ({ ...prev, loading: false }));
