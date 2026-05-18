@@ -170,11 +170,14 @@ function buildRestricoesPayload(analise: ContratoAnalise | null, adicionais: str
 export function useChatGenerator() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRetryCountRef = useRef<Record<string, number>>({});
   const pollRetryCountRef = useRef<Record<string, number>>({});
   const activePipelineMessageIdRef = useRef<string | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
   const finalizedJobsRef = useRef<Record<string, boolean>>({});
+  const generationStartedAtRef = useRef<number | null>(null);
+  const lastRealtimeUpdateRef = useRef<number>(0);
 
   // Refs to avoid stale closures in SSE callbacks
   const stateRef = useRef<ChatState | null>(null);
@@ -262,6 +265,7 @@ export function useChatGenerator() {
     return () => {
       if (eventSourceRef.current) eventSourceRef.current.close();
       if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+      if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
     };
   }, []);
 
@@ -353,9 +357,19 @@ export function useChatGenerator() {
     }
   }
 
+  function clearHeartbeatTimer() {
+    if (heartbeatTimerRef.current) {
+      clearInterval(heartbeatTimerRef.current);
+      heartbeatTimerRef.current = null;
+    }
+  }
+
   function clearActiveGenerationRefs() {
     activePipelineMessageIdRef.current = null;
     activeJobIdRef.current = null;
+    generationStartedAtRef.current = null;
+    lastRealtimeUpdateRef.current = 0;
+    clearHeartbeatTimer();
   }
 
   function markJobFinalized(jobId: string): boolean {
@@ -373,6 +387,40 @@ export function useChatGenerator() {
       return;
     }
     updateLastAgentMessage(updater);
+  }
+
+  function formatElapsed(startedAt: number): string {
+    const elapsedSec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const min = Math.floor(elapsedSec / 60);
+    const sec = elapsedSec % 60;
+    return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+
+  function startLiveHeartbeat(jobId: string) {
+    clearHeartbeatTimer();
+    heartbeatTimerRef.current = setInterval(() => {
+      if (!activeJobIdRef.current || activeJobIdRef.current !== jobId) return;
+      const startedAt = generationStartedAtRef.current;
+      if (!startedAt) return;
+      const elapsed = formatElapsed(startedAt);
+      const staleMs = lastRealtimeUpdateRef.current
+        ? Date.now() - lastRealtimeUpdateRef.current
+        : 0;
+      updateActivePipelineMessage((msg) => {
+        const baseContent = msg.content?.startsWith("Gerando cardapio")
+          ? msg.content.split(" • ")[0]
+          : "Gerando cardapio...";
+        const content = `${baseContent} • ${elapsed}`;
+        if (staleMs > 10000) {
+          return {
+            content,
+            pensamento:
+              "Sincronizando progresso com o servidor...",
+          };
+        }
+        return { content };
+      });
+    }, 1000);
   }
 
   function pipelineStepFromProgress(progress: number): number {
@@ -822,7 +870,10 @@ export function useChatGenerator() {
         const jobId = res.job_id as string;
         finalizedJobsRef.current[jobId] = false;
         activeJobIdRef.current = jobId;
+        generationStartedAtRef.current = Date.now();
+        lastRealtimeUpdateRef.current = Date.now();
         streamRetryCountRef.current[jobId] = 0;
+        startLiveHeartbeat(jobId);
         setState((prev) => ({ ...prev, jobId }));
         if (shouldUsePollingTransport()) {
           pollJobStatus(jobId, skipContractAnalysis);
@@ -856,6 +907,7 @@ export function useChatGenerator() {
       api.gerar
         .status(jobId)
         .then((snapshot) => {
+          lastRealtimeUpdateRef.current = Date.now();
           pollRetryCountRef.current[jobId] = 0;
           const progress = Number(snapshot?.progress ?? 0) || 0;
           const status = String(snapshot?.status || "");
@@ -925,6 +977,7 @@ export function useChatGenerator() {
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
+        lastRealtimeUpdateRef.current = Date.now();
         if (data.type === "ping") return;
         streamRetryCountRef.current[jobId] = 0;
         if (activeJobIdRef.current && activeJobIdRef.current !== jobId) {

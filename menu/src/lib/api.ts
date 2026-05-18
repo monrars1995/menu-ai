@@ -1,4 +1,21 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://backend.neuros.my";
+function resolveApiBase(): string {
+  const configured = (process.env.NEXT_PUBLIC_API_URL || "").trim();
+  if (!configured) return "https://backend.neuros.my";
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    const isLocalhost = host === "localhost" || host === "127.0.0.1";
+    const pointsToNeurosBackend = /^https:\/\/backend\.neuros\.my\/?$/i.test(configured);
+    if (isLocalhost && pointsToNeurosBackend) {
+      // Em localhost, usa proxy same-origin para evitar bloqueio CORS do backend de produção.
+      return "/api-proxy";
+    }
+  }
+
+  return configured;
+}
+
+const API_BASE = resolveApiBase();
 
 class ApiError extends Error {
   status: number;
