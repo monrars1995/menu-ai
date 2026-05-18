@@ -55,24 +55,57 @@ function formatMealLabel(value: string): string {
   return map[value] || value;
 }
 
+function toDisplayText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => toDisplayText(item)).filter(Boolean).join(", ");
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const preferred = ["nome", "tipo", "frequencia", "regra", "regras", "valor", "descricao"];
+    const picked = preferred
+      .map((k) => obj[k])
+      .map((v) => toDisplayText(v))
+      .filter(Boolean);
+    if (picked.length) return picked.join(" • ");
+    return Object.entries(obj)
+      .map(([k, v]) => `${k}: ${toDisplayText(v)}`)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(" • ");
+  }
+  return String(value);
+}
+
+function toDisplayList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return values.map((item) => toDisplayText(item)).filter(Boolean);
+}
+
 function normalizeContractRules(analise: ContratoAnalise | null | undefined): string[] {
   if (!analise) return [];
   const linhas: string[] = [];
-  if (analise.dietas_especiais?.length) {
-    linhas.push(`Dietas especiais: ${analise.dietas_especiais.join(", ")}`);
+  const dietas = toDisplayList(analise.dietas_especiais);
+  if (dietas.length) {
+    linhas.push(`Dietas especiais: ${dietas.join(", ")}`);
   }
-  if (analise.proibicoes?.length) {
-    linhas.push(`Proibições: ${analise.proibicoes.join(", ")}`);
+  const proibicoes = toDisplayList(analise.proibicoes);
+  if (proibicoes.length) {
+    linhas.push(`Proibições: ${proibicoes.join(", ")}`);
   }
-  if (analise.restricoes_alergenos?.length) {
-    linhas.push(`Alergênicos: ${analise.restricoes_alergenos.join(", ")}`);
+  const alergenos = toDisplayList(analise.restricoes_alergenos);
+  if (alergenos.length) {
+    linhas.push(`Alergênicos: ${alergenos.join(", ")}`);
   }
   const incidencias = analise.incidencias;
   if (Array.isArray(incidencias) && incidencias.length) {
-    linhas.push(`Incidências obrigatórias: ${incidencias.join(", ")}`);
+    linhas.push(`Incidências obrigatórias: ${incidencias.map((v) => toDisplayText(v)).filter(Boolean).join(", ")}`);
   } else if (incidencias && typeof incidencias === "object") {
     const items = Object.entries(incidencias)
-      .map(([k, v]) => `${k}: ${String(v)}`)
+      .map(([k, v]) => `${k}: ${toDisplayText(v)}`)
       .filter(Boolean);
     if (items.length) linhas.push(`Incidências obrigatórias: ${items.join(", ")}`);
   }

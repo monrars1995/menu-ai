@@ -33,4 +33,29 @@ describe("MessageBubble", () => {
     expect(screen.getByText("Analise do Contrato Concluida")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirmar e Continuar" })).toBeInTheDocument();
   });
+
+  it("renderiza analise com listas estruturadas sem quebrar React", () => {
+    render(
+      <MessageBubble
+        role="agent"
+        type="analysis"
+        content="Analise pronta"
+        analysis={{
+          status: "analisado",
+          necessidades: { observacoes: "ok", num_refeicoes_dia: 1, estrutura_refeicao: {} },
+          servicos: { num_refeicoes_dia: 1, estrutura: {} },
+          gramaturas: { proteico: "120g", regra: { nome: "salada", tipo: "livre" } as any },
+          incidencias: {},
+          proibicoes: [{ nome: "peixe", tipo: "proibido", frequencia: "0", regras: "contrato" } as any],
+          restricoes_alergenos: [{ nome: "gluten" } as any],
+          dietas_especiais: [{ nome: "vegetariano", tipo: "dieta", frequencia: "diario", regras: "obrigatoria" } as any],
+          sazonalidade: false,
+        }}
+      />
+    );
+
+    expect(screen.getByText("Analise do Contrato")).toBeInTheDocument();
+    expect(screen.getByText(/vegetariano/i)).toBeInTheDocument();
+    expect(screen.getByText(/peixe/i)).toBeInTheDocument();
+  });
 });

@@ -25,6 +25,39 @@ import type { ContratoAnalise } from "@/lib/types";
 import type { ConfirmData, ResultData, UploadData } from "@/components/chat/useChatGenerator";
 import api from "@/lib/api";
 
+function toDisplayText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => toDisplayText(item)).filter(Boolean).join(", ");
+  }
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const preferred = ["nome", "tipo", "frequencia", "regra", "regras", "valor", "descricao"];
+    const picked = preferred
+      .map((k) => obj[k])
+      .map((v) => toDisplayText(v))
+      .filter(Boolean);
+    if (picked.length) return picked.join(" • ");
+    const first = Object.entries(obj)
+      .map(([k, v]) => `${k}: ${toDisplayText(v)}`)
+      .filter((s) => s.trim() !== ":")
+      .slice(0, 3);
+    return first.join(" • ");
+  }
+  return String(value);
+}
+
+function toBadgeList(values: unknown, max = 3): string[] {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((item) => toDisplayText(item).trim())
+    .filter(Boolean)
+    .slice(0, max);
+}
+
 export interface MessageBubbleProps {
   role: "agent" | "user";
   type: "text" | "analysis" | "pipeline" | "confirm" | "result" | "error" | "uploading" | "upload-ready";
@@ -150,6 +183,9 @@ export function MessageBubble(props: MessageBubbleProps) {
 
 function AnalysisCard({ analysis }: { analysis: ContratoAnalise | null }) {
   const [expanded, setExpanded] = useState(false);
+  const proibicoes = toBadgeList(analysis?.proibicoes, 3);
+  const dietasEspeciais = toBadgeList(analysis?.dietas_especiais, 3);
+  const alergenos = toBadgeList(analysis?.restricoes_alergenos, 8);
 
   if (!analysis) {
     return (
@@ -183,12 +219,12 @@ function AnalysisCard({ analysis }: { analysis: ContratoAnalise | null }) {
         </div>
         <div className="rounded-lg bg-white/70 p-2.5">
           <p className="text-[10px] font-medium text-ink-muted-48">Proibicoes</p>
-          {analysis.proibicoes?.length > 0 ? (
+          {proibicoes.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
-              {analysis.proibicoes.slice(0, 3).map((p, i) => (
+              {proibicoes.map((p, i) => (
                 <span key={i} className="rounded bg-red-100/60 px-1.5 py-0.5 text-[10px] font-medium text-red-700">{p}</span>
               ))}
-              {analysis.proibicoes.length > 3 && (
+              {Array.isArray(analysis.proibicoes) && analysis.proibicoes.length > 3 && (
                 <span className="text-[10px] text-ink-muted-48">+{analysis.proibicoes.length - 3}</span>
               )}
             </div>
@@ -198,9 +234,9 @@ function AnalysisCard({ analysis }: { analysis: ContratoAnalise | null }) {
         </div>
         <div className="rounded-lg bg-white/70 p-2.5">
           <p className="text-[10px] font-medium text-ink-muted-48">Dietas especiais</p>
-          {analysis.dietas_especiais?.length > 0 ? (
+          {dietasEspeciais.length > 0 ? (
             <div className="mt-1 flex flex-wrap gap-1">
-              {analysis.dietas_especiais.slice(0, 3).map((d, i) => (
+              {dietasEspeciais.map((d, i) => (
                 <span key={i} className="rounded bg-blue-100/60 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">{d}</span>
               ))}
             </div>
@@ -210,11 +246,11 @@ function AnalysisCard({ analysis }: { analysis: ContratoAnalise | null }) {
         </div>
       </div>
 
-      {analysis.restricoes_alergenos?.length > 0 && (
+      {alergenos.length > 0 && (
         <div className="rounded-lg bg-white/70 p-2.5">
           <p className="text-[10px] font-medium text-ink-muted-48">Alergenos</p>
           <div className="mt-1 flex flex-wrap gap-1">
-            {analysis.restricoes_alergenos.map((a, i) => (
+            {alergenos.map((a, i) => (
               <span key={i} className="rounded bg-orange-100/60 px-1.5 py-0.5 text-[10px] font-medium text-orange-700">{a}</span>
             ))}
           </div>
@@ -228,7 +264,7 @@ function AnalysisCard({ analysis }: { analysis: ContratoAnalise | null }) {
             {Object.entries(analysis.gramaturas).slice(0, 6).map(([cat, val]) => (
               <div key={cat} className="text-xs">
                 <span className="text-ink-muted-48">{cat}:</span>
-                <span className="ml-1 font-medium text-ink">{val}</span>
+                <span className="ml-1 font-medium text-ink">{toDisplayText(val)}</span>
               </div>
             ))}
           </div>
