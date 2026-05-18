@@ -1,5 +1,6 @@
 "use client";
 import { Settings2 } from "lucide-react";
+import { API_RUNTIME_TARGET, RUNTIME_ENV } from "@/lib/api";
 
 type LlmModel = {
   id: string;
@@ -30,9 +31,16 @@ export function GerarTopBar({
   const hasReviewModels = reviewModels.length > 0;
   const generatorValue = hasGenerationModels ? llmModel || generationModels[0].id : "";
   const reviewerValue = hasReviewModels ? reviewLlmModel || reviewModels[0].id : "";
+  const runtimeLabel = RUNTIME_ENV === "production" ? "production" : RUNTIME_ENV === "staging" ? "staging" : "local";
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
+      <span
+        title={`API alvo: ${API_RUNTIME_TARGET}`}
+        className="inline-flex items-center rounded-full border border-hairline bg-surface-soft px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-ink-muted-48"
+      >
+        {runtimeLabel}
+      </span>
       <label className="inline-flex items-center gap-2 rounded-lg border border-hairline bg-white px-2 py-1.5 text-sm text-zinc-700">
         <Settings2 size={14} className="text-ink-muted-48" />
         <span className="text-xs font-medium text-ink-muted-48">Gerador</span>

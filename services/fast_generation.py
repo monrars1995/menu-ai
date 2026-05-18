@@ -157,6 +157,25 @@ class FastGenerationTimeout(RuntimeError):
         self.error_type = "timeout_budget_exceeded"
 
 
+class FastGenerationProviderFailure(RuntimeError):
+    """Falha explícita do gerador LLM principal."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_type: str = "generator_failed",
+        failure_summary: Optional[str] = None,
+        generator_model: Optional[str] = None,
+        generator_provider: Optional[str] = None,
+    ):
+        super().__init__(message)
+        self.error_type = error_type
+        self.failure_summary = failure_summary or message
+        self.generator_model = generator_model
+        self.generator_provider = generator_provider
+
+
 @dataclass(frozen=True)
 class Candidate:
     id: str
@@ -1011,6 +1030,7 @@ def _persist_cardapio(
     review_provider_used: Optional[str] = None,
     review_duration_seconds: Optional[float] = None,
     degraded_generation: bool = False,
+    generation_state: Optional[str] = None,
     prompt_chars: Optional[int] = None,
     prompt_catalog_limit: Optional[int] = None,
 ) -> str:
@@ -1053,6 +1073,7 @@ def _persist_cardapio(
             "review_duration_seconds": review_duration_seconds,
             "review_findings_count": len(review_findings or []),
             "degraded_generation": degraded_generation,
+            "generation_state": generation_state,
         },
         updated_at=datetime.utcnow(),
     )
@@ -1128,6 +1149,7 @@ def _persist_cardapio(
                 "review_duration_seconds": review_duration_seconds,
                 "review_findings_count": len(review_findings or []),
                 "degraded_generation": degraded_generation,
+                "generation_state": generation_state,
             }
         )
         job_db.parametros_json = params
@@ -1166,6 +1188,10 @@ def run_fast_generation(
 
     db = SessionLocal()
     try:
+        allow_degraded_fallback = (
+            (os.getenv("MENUAI_FAST_ALLOW_DEGRADED_FALLBACK") or "false").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
         budget_seconds_raw = (os.getenv("MENUAI_FAST_BUDGET_SECONDS") or "300").strip()
         per_call_timeout_raw = (os.getenv("MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS") or "45").strip()
         max_attempts_raw = (os.getenv("MENUAI_FAST_LLM_MAX_ATTEMPTS") or "2").strip()
@@ -1239,6 +1265,7 @@ def run_fast_generation(
         llm_prompt_catalog_limit: Optional[int] = None
         timeout_reason: Optional[str] = None
         degraded_generation = False
+        generation_state = "generator_succeeded_reviewer_pending" if review_enabled else "generator_succeeded_review_disabled"
         review_outcome = ReviewOutcome(
             status="not_requested" if not review_enabled else "pending",
             summary="",
@@ -1290,12 +1317,24 @@ def run_fast_generation(
             llm_prompt_catalog_limit = int(call_meta.get("prompt_catalog_limit") or 0) or llm_prompt_catalog_limit
         except Exception as exc:
             logger.warning("Falha na geração LLM inicial do modo fast: %s", exc)
+            failure_summary = _summarize_llm_failure(exc)
+            if not allow_degraded_fallback:
+                raise FastGenerationProviderFailure(
+                    (
+                        "Falha ao gerar cardápio com o modelo selecionado. "
+                        f"{failure_summary} Tente novamente, troque o modelo ou reduza os dias."
+                    ),
+                    failure_summary=failure_summary,
+                    generator_model=llm_model,
+                ) from exc
+
             degraded_generation = True
+            generation_state = "generator_degraded_disabled_for_approval"
             warnings.append(
-                "Geração LLM inicial falhou; usada rotação determinística. "
-                f"Motivo: {_summarize_llm_failure(exc)}"
+                "Geração LLM inicial falhou; usada rotação determinística em modo de contingência explícita. "
+                f"Motivo: {failure_summary}"
             )
-            progress(66, "⚙️ Modelo indisponível no momento. Aplicando fallback determinístico rápido...", "Sistema")
+            progress(66, "⚙️ Modelo indisponível no momento. Aplicando contingência determinística...", "Sistema")
             rows = _deterministic_rows(catalog, dias, refeicoes_norm)
             raw_response = ""
 
@@ -1360,9 +1399,9 @@ def run_fast_generation(
         if degraded_generation:
             review_outcome = ReviewOutcome(
                 status="draft_degraded",
-                summary="Cardápio gerado em modo degradado após fallback determinístico; revisão LLM consultiva não aplicada.",
+                summary="Cardápio gerado em modo de contingência determinística; revisão LLM consultiva não aplicada.",
                 warnings=[
-                    "Resultado marcado como draft degradado porque o gerador LLM falhou e o sistema usou rotação determinística."
+                    "Resultado marcado como draft degradado porque o gerador LLM falhou e o sistema usou contingência determinística."
                 ],
                 findings=[],
                 applied_fixes_count=0,
@@ -1428,6 +1467,7 @@ def run_fast_generation(
                     provider_used=str(review_meta.get("provider_used") or ""),
                     duration_seconds=round(time.time() - review_started_at, 2),
                 )
+                generation_state = "generator_succeeded_reviewer_succeeded"
             except Exception as exc:
                 review_outcome = ReviewOutcome(
                     status="review_failed",
@@ -1438,6 +1478,9 @@ def run_fast_generation(
                     model_id=review_llm_model,
                     duration_seconds=round(time.time() - review_started_at, 2),
                 )
+                generation_state = "generator_succeeded_reviewer_failed"
+        else:
+            generation_state = "generator_succeeded_review_disabled"
 
         ensure_budget("persist", reserve_seconds=0)
         progress(90, "💾 Persistindo cardápio estruturado...", "Sistema")
@@ -1472,6 +1515,7 @@ def run_fast_generation(
             review_provider_used=review_outcome.provider_used,
             review_duration_seconds=review_outcome.duration_seconds,
             degraded_generation=degraded_generation,
+            generation_state=generation_state,
             prompt_chars=llm_prompt_chars,
             prompt_catalog_limit=llm_prompt_catalog_limit,
         )
@@ -1492,6 +1536,7 @@ def run_fast_generation(
                     "review_findings_count": len(review_outcome.findings),
                     "review_applied_fixes_count": review_outcome.applied_fixes_count,
                     "degraded_generation": degraded_generation,
+                    "generation_state": generation_state,
                     "prompt_chars": llm_prompt_chars,
                     "prompt_catalog_limit": llm_prompt_catalog_limit,
                     "warnings_count": len(warnings),
@@ -1518,6 +1563,7 @@ def run_fast_generation(
             "review_findings": review_outcome.findings,
             "review_applied_fixes_count": review_outcome.applied_fixes_count,
             "degraded_generation": degraded_generation,
+            "generation_state": generation_state,
             "prompt_chars": llm_prompt_chars,
             "prompt_catalog_limit": llm_prompt_catalog_limit,
         }

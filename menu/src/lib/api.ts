@@ -1,32 +1,58 @@
-function resolveApiBase(): string {
-  const configured = (process.env.NEXT_PUBLIC_API_URL || "").trim();
-  const mode = (process.env.NEXT_PUBLIC_API_MODE || "auto").trim().toLowerCase();
-  if (mode === "proxy" || mode === "local") return "/api-proxy";
-  if (mode === "remote") return configured || "https://backend.neuros.my";
+type RuntimeEnvironment = "local" | "staging" | "production";
 
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    const isLocalhost = host === "localhost" || host === "127.0.0.1";
-    if (!configured && isLocalhost) {
-      return "/api-proxy";
-    }
-  }
-  if (!configured) return "https://backend.neuros.my";
+const PROXY_PATH = "/api-proxy";
+const DEFAULT_BACKENDS: Record<Exclude<RuntimeEnvironment, "local">, string> = {
+  staging: "https://menuai-app-staging.up.railway.app",
+  production: "https://backend.neuros.my",
+};
 
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    const isLocalhost = host === "localhost" || host === "127.0.0.1";
-    const pointsToNeurosBackend = /^https:\/\/backend\.neuros\.my\/?$/i.test(configured);
-    if (isLocalhost && pointsToNeurosBackend) {
-      // Em localhost, usa proxy same-origin para evitar bloqueio CORS do backend de produção.
-      return "/api-proxy";
-    }
-  }
-
-  return configured;
+function normalizeBase(url: string): string {
+  return url.trim().replace(/\/+$/, "");
 }
 
+function inferRuntimeEnvironment(): RuntimeEnvironment {
+  const declared = (
+    process.env.NEXT_PUBLIC_RUNTIME_ENV ||
+    process.env.NEXT_PUBLIC_RAILWAY_ENVIRONMENT_NAME ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  if (declared === "production") return "production";
+  if (declared === "staging") return "staging";
+
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1") return "local";
+    if (host === "menu.neuros.my" || host === "backend.neuros.my") return "production";
+    if (host.includes("staging.up.railway.app")) return "staging";
+  }
+
+  return process.env.NODE_ENV === "production" ? "production" : "local";
+}
+
+function resolveRemoteApiBase(runtimeEnv: RuntimeEnvironment): string {
+  const configured = normalizeBase(process.env.NEXT_PUBLIC_API_URL || "");
+  if (configured) return configured;
+  if (runtimeEnv === "local") return DEFAULT_BACKENDS.production;
+  return DEFAULT_BACKENDS[runtimeEnv];
+}
+
+function resolveApiBase(): string {
+  const runtimeEnv = inferRuntimeEnvironment();
+  const mode = (process.env.NEXT_PUBLIC_API_MODE || "auto").trim().toLowerCase();
+  const remoteBase = resolveRemoteApiBase(runtimeEnv);
+
+  if (mode === "proxy" || mode === "local") return PROXY_PATH;
+  if (mode === "remote") return remoteBase;
+  if (runtimeEnv === "local") return PROXY_PATH;
+  return remoteBase;
+}
+
+const RUNTIME_ENV = inferRuntimeEnvironment();
+const REMOTE_API_BASE = resolveRemoteApiBase(RUNTIME_ENV);
 const API_BASE = resolveApiBase();
+const API_RUNTIME_TARGET = API_BASE === PROXY_PATH ? REMOTE_API_BASE : API_BASE;
 
 class ApiError extends Error {
   status: number;
@@ -231,5 +257,5 @@ export const api = {
   },
 };
 
-export { ApiError, API_BASE };
+export { ApiError, API_BASE, API_RUNTIME_TARGET, REMOTE_API_BASE, RUNTIME_ENV };
 export default api;

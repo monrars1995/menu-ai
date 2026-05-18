@@ -91,6 +91,7 @@ export interface ResultData {
   reviewFindings?: ReviewFinding[];
   reviewAppliedFixesCount?: number;
   degradedGeneration?: boolean;
+  generationState?: string;
 }
 
 export interface CardapioPreviewDay {
@@ -694,6 +695,7 @@ export function useChatGenerator() {
       reviewFindings: reviewFindings(cardapio),
       reviewAppliedFixesCount: Number(params.review_applied_fixes_count || 0) || 0,
       degradedGeneration: Boolean(params.degraded_generation),
+      generationState: params.generation_state ? String(params.generation_state) : undefined,
     };
   }
 
@@ -729,9 +731,12 @@ export function useChatGenerator() {
           loading: false,
           cardapioId: item?.id || null,
         }));
+        const resultMessage = resultData.degradedGeneration
+          ? "O gerador LLM falhou. Revise a prévia técnica abaixo e gere novamente com outro modelo ou menos dias."
+          : "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.";
         addAgentMessage(
           "result",
-          "Cardápio gerado. Revise a prévia abaixo e escolha se deseja aprovar ou gerar novamente.",
+          resultMessage,
           { resultData }
         );
       })

@@ -821,6 +821,7 @@ def executar_crew(
             job_state.jobs[job_id]["review_findings"] = fast_result.get("review_findings") or []
             job_state.jobs[job_id]["review_applied_fixes_count"] = int(fast_result.get("review_applied_fixes_count") or 0)
             job_state.jobs[job_id]["degraded_generation"] = bool(fast_result.get("degraded_generation"))
+            job_state.jobs[job_id]["generation_state"] = fast_result.get("generation_state")
             job_state.jobs[job_id].setdefault("config", {})
             job_state.jobs[job_id]["config"].update(
                 {
@@ -836,6 +837,7 @@ def executar_crew(
                     "review_findings": fast_result.get("review_findings") or [],
                     "review_applied_fixes_count": int(fast_result.get("review_applied_fixes_count") or 0),
                     "degraded_generation": bool(fast_result.get("degraded_generation")),
+                    "generation_state": fast_result.get("generation_state"),
                 }
             )
             _persist_job_snapshot(
@@ -872,10 +874,15 @@ def executar_crew(
                         db_fast.close()
                 except Exception:
                     logger.exception("persist_fast_job_completion_failed job_id=%s", job_id)
+            completion_message = "🎉 Cardápio gerado com sucesso no modo rápido."
+            if fast_result.get("review_status") == "review_failed":
+                completion_message = "✅ Cardápio gerado. O modelo revisor falhou e o resultado segue sem revisão consultiva."
+            elif fast_result.get("review_status") == "approved_with_fixes":
+                completion_message = "✅ Cardápio gerado e ajustado automaticamente após revisão consultiva."
             emit(
                 "log",
                 agent="Sistema",
-                message="🎉 Cardápio gerado com sucesso no modo rápido.",
+                message=completion_message,
                 progress=100,
             )
             emit(
@@ -897,6 +904,7 @@ def executar_crew(
                 review_findings=fast_result.get("review_findings") or [],
                 review_applied_fixes_count=int(fast_result.get("review_applied_fixes_count") or 0),
                 degraded_generation=bool(fast_result.get("degraded_generation")),
+                generation_state=fast_result.get("generation_state"),
             )
             return
 
@@ -987,14 +995,24 @@ def executar_crew(
         timeout_reason = getattr(exc, "timeout_reason", None)
         job_state.jobs[job_id]["error_type"] = err_type
         job_state.jobs[job_id]["timeout_reason"] = timeout_reason
+        job_state.jobs[job_id]["current_step"] = "erro"
         job_state.jobs[job_id]["last_update_at"] = _iso_now()
         job_state.jobs[job_id]["last_update_ts"] = time.time()
+        job_state.jobs[job_id].setdefault("config", {})
+        job_state.jobs[job_id]["config"].update(
+            {
+                "generation_state": "generator_failed",
+                "error_type": err_type,
+                "timeout_reason": timeout_reason,
+            }
+        )
         emit(
             "error",
             message=err,
             detail=traceback.format_exc(),
             error_type=err_type,
             timeout_reason=timeout_reason,
+            generation_state="generator_failed",
             progress=job_state.jobs[job_id].get("progress", 0),
         )
         _log_job_event(
@@ -1016,6 +1034,13 @@ def executar_crew(
                 if job_db:
                     job_db.status = "erro"
                     job_db.erro = err
+                    params = job_db.parametros_json if isinstance(job_db.parametros_json, dict) else {}
+                    job_db.parametros_json = {
+                        **params,
+                        "generation_state": "generator_failed",
+                        "error_type": err_type,
+                        "timeout_reason": timeout_reason,
+                    }
                     job_db.updated_at = datetime.utcnow()
                     db.commit()
                 db.close()

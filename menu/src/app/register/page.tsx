@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { API_BASE } from "@/lib/api";
 import { UserPlus, Eye, EyeOff } from "lucide-react";
 
 export default function RegisterPage() {
@@ -20,7 +21,7 @@ export default function RegisterPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "https://backend.neuros.my"}/api/auth/registro`, {
+      const res = await fetch(`${API_BASE}/api/auth/registro`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

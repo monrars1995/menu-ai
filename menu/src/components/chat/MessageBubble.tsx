@@ -516,6 +516,7 @@ function ResultCard({
     }
   };
   const isApproved = data.status === "aprovado" || data.status === "publicado";
+  const canApprove = Boolean(data.cardapioId) && !isApproved && !data.degradedGeneration;
   const preview = data.preview || [];
   const reviewStatusLabel: Record<string, string> = {
     reviewed: "Revisado",
@@ -552,7 +553,7 @@ function ResultCard({
               : "bg-amber-100 text-amber-800"
           )}
         >
-          {isApproved ? "Aprovado" : "Aguardando revisão"}
+          {isApproved ? "Aprovado" : data.degradedGeneration ? "Falha do gerador" : "Aguardando revisão"}
         </span>
       </div>
 
@@ -666,9 +667,9 @@ function ResultCard({
 
       {data.degradedGeneration && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
-          <p className="text-xs font-medium text-red-900">Resultado degradado</p>
+          <p className="text-xs font-medium text-red-900">Contingência desabilitada para aprovação</p>
           <p className="mt-1 text-[11px] leading-relaxed text-red-800">
-            O gerador LLM falhou e o sistema montou um draft determinístico. Revise com cuidado. O caminho recomendado aqui é gerar novamente, trocar o modelo ou reduzir dias.
+            O gerador LLM principal falhou. Este resultado não deve seguir como aprovação normal. O caminho correto aqui é gerar novamente, trocar o modelo ou reduzir os dias.
           </p>
         </div>
       )}
@@ -685,20 +686,20 @@ function ResultCard({
         >
           <RefreshCw size={12} /> {data.degradedGeneration ? "Gerar novamente" : "Revisar novamente"}
         </button>
-        <button
-          onClick={() => onApproveResult?.(data.cardapioId)}
-          disabled={!data.cardapioId || isApproved}
-          className={cn(
-            "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2",
-            isApproved
-              ? "cursor-default bg-success/10 text-success"
-              : data.degradedGeneration
-              ? "border border-hairline bg-white text-ink hover:bg-surface-soft"
-              : "bg-primary text-white hover:bg-primary-active"
-          )}
-        >
-          <CheckCircle2 size={12} /> {isApproved ? "Aprovado" : data.degradedGeneration ? "Aprovar draft" : "Aprovar cardápio"}
-        </button>
+        {!data.degradedGeneration && (
+          <button
+            onClick={() => onApproveResult?.(data.cardapioId)}
+            disabled={!canApprove}
+            className={cn(
+              "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2",
+              isApproved
+                ? "cursor-default bg-success/10 text-success"
+                : "bg-primary text-white hover:bg-primary-active"
+            )}
+          >
+            <CheckCircle2 size={12} /> {isApproved ? "Aprovado" : "Aprovar cardápio"}
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -766,8 +767,11 @@ function ErrorCard({
 }) {
   const normalizedError = (erro || "").toLowerCase();
   const shouldShowRecoveryActions =
+    (errorType || "").includes("generator_failed") ||
     (errorType || "").includes("timeout") ||
     normalizedError.includes("timeout") ||
+    normalizedError.includes("falha ao gerar cardápio") ||
+    normalizedError.includes("modelo selecionado") ||
     normalizedError.includes("sem progresso") ||
     normalizedError.includes("sincroniza");
 

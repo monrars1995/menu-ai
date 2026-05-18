@@ -15,11 +15,15 @@ Fluxo completo com registo + login (requer ALLOW_OPEN_REGISTRO):
 
 Config opcional:
   SMOKE_BASE_URL=http://127.0.0.1:8000
+  SMOKE_LLM_MODEL=openai-gpt-5.5
+  SMOKE_REVIEW_LLM_MODEL=queen-3.6
+  SMOKE_DAYS=30
 """
 from __future__ import annotations
 
 import os
 import sys
+import time
 import uuid
 
 _ROOT = __file__
@@ -86,6 +90,7 @@ def main() -> int:
 
     base_url = os.getenv("SMOKE_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
     eid = os.getenv("DEFAULT_EMPRESA_ID", TEST_EMPRESA_ID).strip()
+    smoke_days = max(1, min(366, int(os.getenv("SMOKE_DAYS", "1") or "1")))
 
     r = requests.get(f"{base_url}/api/health", timeout=20)
     assert r.status_code == 200, r.text
@@ -107,7 +112,8 @@ def main() -> int:
     assert r.status_code == 200, r.text
     lm = r.json()
     assert lm.get("models") and len(lm["models"]) >= 1, lm
-    smoke_model = lm.get("default") or lm["models"][0]["id"]
+    smoke_model = (os.getenv("SMOKE_LLM_MODEL") or lm.get("default") or lm["models"][0]["id"]).strip()
+    smoke_review_model = (os.getenv("SMOKE_REVIEW_LLM_MODEL") or "").strip()
 
     if full_auth:
         suffix = uuid.uuid4().hex[:8]
@@ -145,13 +151,25 @@ def main() -> int:
         r = requests.post(
             f"{base_url}/api/gerar",
             headers=headers,
-            json={"dias": 1, "restricoes_usuario": "smoke", "llm_model": smoke_model},
+            json={
+                "dias": smoke_days,
+                "restricoes_usuario": "smoke",
+                "llm_model": smoke_model,
+                "review_llm_model": smoke_review_model or None,
+                "review_enabled": bool(smoke_review_model),
+            },
             timeout=30,
         )
     else:
         r = requests.post(
             f"{base_url}/api/gerar",
-            json={"dias": 1, "restricoes_usuario": "smoke", "llm_model": smoke_model},
+            json={
+                "dias": smoke_days,
+                "restricoes_usuario": "smoke",
+                "llm_model": smoke_model,
+                "review_llm_model": smoke_review_model or None,
+                "review_enabled": bool(smoke_review_model),
+            },
             timeout=30,
         )
         if r.status_code in (400, 401, 403) and not demo_sem_auth:
@@ -188,9 +206,27 @@ def main() -> int:
         assert st2.status_code == 200, st2.text
         print("smoke_flow aviso: timeout ao ler primeiro evento SSE (20s), mas status endpoint respondeu.")
 
+    deadline = time.time() + max(120, smoke_days * 10)
+    final_status = None
+    while time.time() < deadline:
+        st3 = requests.get(f"{base_url}/api/status/{job_id}", timeout=20)
+        assert st3.status_code == 200, st3.text
+        final_status = st3.json()
+        if final_status.get("status") in {"concluido", "erro"}:
+            break
+        time.sleep(5)
+
+    assert final_status is not None, "status final ausente"
+    assert final_status.get("status") == "concluido", final_status
+    assert not final_status.get("degraded_generation"), final_status
+    assert final_status.get("generator_model"), final_status
+    if smoke_review_model:
+        assert final_status.get("review_model"), final_status
+        assert final_status.get("review_status") not in {None, "pending"}, final_status
+
     print(
-        "smoke_flow OK: health, info, /api/gerar, status, JobAgente (empresa_id=%s), stream(1 ev)"
-        % eid
+        "smoke_flow OK: health, info, /api/gerar, status, JobAgente, SSE inicial e conclusão LLM real "
+        f"(empresa_id={eid}, model={smoke_model}, review={smoke_review_model or 'disabled'})"
     )
     return 0
 

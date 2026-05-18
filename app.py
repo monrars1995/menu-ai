@@ -1,6 +1,6 @@
 
 """
-Menu.AI — Backend FastAPI v3.6.19
+Menu.AI — Backend FastAPI v3.6.23
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
@@ -30,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.22"
+APP_VERSION = "3.6.23"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -202,6 +202,7 @@ def _status_payload(job_id: str, job_data: dict) -> dict:
         "review_warnings": job_data.get("review_warnings") or config.get("review_warnings") or [],
         "review_applied_fixes_count": job_data.get("review_applied_fixes_count") or config.get("review_applied_fixes_count") or 0,
         "degraded_generation": bool(job_data.get("degraded_generation") if job_data.get("degraded_generation") is not None else config.get("degraded_generation")),
+        "generation_state": job_data.get("generation_state") or config.get("generation_state"),
     }
 
 
@@ -766,7 +767,7 @@ async def stream_job(request: Request, job_id: str, usuario: Optional[Usuario] =
         return StreamingResponse(once(), media_type="text/event-stream")
     if j and j.get("status") == "erro":
         async def once_error():
-            yield f"data: {json.dumps({'type': 'error', 'message': j.get('error') or 'Job em erro', 'progress': j.get('progress', 0), 'error_type': j.get('error_type'), 'timeout_reason': j.get('timeout_reason')}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': j.get('error') or 'Job em erro', 'progress': j.get('progress', 0), 'error_type': j.get('error_type'), 'timeout_reason': j.get('timeout_reason'), 'generation_state': j.get('generation_state') or (j.get('config') or {}).get('generation_state')}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
             once_error(),
@@ -836,6 +837,7 @@ async def admin_recent_jobs(
                 if end:
                     duration_seconds = max(0.0, (end - row.iniciado_em).total_seconds())
             params = row.parametros_json if isinstance(row.parametros_json, dict) else {}
+            runtime_job = job_state.jobs.get(row.job_id) or {}
             items.append(
                 {
                     "job_id": row.job_id,
@@ -850,6 +852,15 @@ async def admin_recent_jobs(
                     "generation_mode": params.get("generation_mode"),
                     "attempts": params.get("attempts"),
                     "timeout_reason": params.get("timeout_reason"),
+                    "error_type": params.get("error_type"),
+                    "current_step": runtime_job.get("current_step") or params.get("current_step"),
+                    "generator_model": params.get("generator_model_used") or params.get("model_used"),
+                    "generator_provider": params.get("generator_provider_used") or params.get("provider_used"),
+                    "review_model": params.get("review_model_used"),
+                    "review_provider": params.get("review_provider_used"),
+                    "review_status": params.get("review_status"),
+                    "degraded_generation": bool(params.get("degraded_generation")),
+                    "generation_state": params.get("generation_state"),
                     "error": row.erro,
                 }
             )

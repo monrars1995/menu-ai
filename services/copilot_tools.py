@@ -13,6 +13,7 @@ import os
 import queue
 import time
 import uuid
+import logging
 from dataclasses import dataclass
 import re
 from datetime import datetime
@@ -51,6 +52,7 @@ from services.knowledge_base import (
 from services.knowledge_hooks import sync_knowledge_safe
 from services import job_state
 
+logger = logging.getLogger("menuai.copilot_tools")
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 UPLOAD_DIR = BASE_DIR / "data" / "uploads"
@@ -1108,8 +1110,46 @@ def execute_tool(db: Session, ctx: CopilotContext, tool_name: str, raw_args: dic
     tool = TOOLS.get(tool_name)
     if tool is None:
         raise ValueError(f"Tool '{tool_name}' não registrada.")
+    started_at = time.perf_counter()
     parsed = tool.input_model.model_validate(raw_args or {})
-    return tool.handler(db, ctx, parsed)
+    try:
+        result = tool.handler(db, ctx, parsed)
+        logger.info(
+            "tool_event=%s",
+            json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "sessao_id": ctx.sessao_id,
+                    "empresa_id": ctx.empresa_id,
+                    "page_context": ctx.page_context,
+                    "mutation": tool.mutation,
+                    "success": True,
+                    "latency_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+                ensure_ascii=False,
+                default=str,
+            ),
+        )
+        return result
+    except Exception as exc:
+        logger.warning(
+            "tool_event=%s",
+            json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "sessao_id": ctx.sessao_id,
+                    "empresa_id": ctx.empresa_id,
+                    "page_context": ctx.page_context,
+                    "mutation": tool.mutation,
+                    "success": False,
+                    "latency_ms": int((time.perf_counter() - started_at) * 1000),
+                    "error": str(exc)[:500],
+                },
+                ensure_ascii=False,
+                default=str,
+            ),
+        )
+        raise
 
 
 def _extract_search_hint(
