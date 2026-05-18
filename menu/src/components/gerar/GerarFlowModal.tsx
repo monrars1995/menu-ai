@@ -5,6 +5,7 @@ import { Loader2, Sparkles } from "lucide-react";
 import type { ContratoAnalise } from "@/lib/types";
 import type { ChatPhase, ConfirmData } from "@/components/chat";
 import { MealSelector } from "@/components/meal-selector";
+import { ContractUpload } from "@/components/wizard/ContractUpload";
 import { cn } from "@/lib/utils";
 
 type GerarFlowModalProps = {
@@ -19,6 +20,8 @@ type GerarFlowModalProps = {
   restricoes: string;
   confirmData: ConfirmData | null;
   onAnalyzeContrato: () => void;
+  onSelectContrato: (contratoId: string) => void;
+  onUploadContrato: (file: File) => void;
   onSetDias: (value: number) => void;
   onSetRefeicoes: (value: string[]) => void;
   onSetCustoAlvo: (value: string) => void;
@@ -30,6 +33,7 @@ type GerarFlowModalProps = {
 };
 
 const overlayPhases: ChatPhase[] = [
+  "welcome",
   "analysis",
   "upload-confirm",
   "config-days",
@@ -87,6 +91,8 @@ export function GerarFlowModal({
   restricoes,
   confirmData,
   onAnalyzeContrato,
+  onSelectContrato,
+  onUploadContrato,
   onSetDias,
   onSetRefeicoes,
   onSetCustoAlvo,
@@ -142,6 +148,18 @@ export function GerarFlowModal({
             <p className="mt-1 text-sm text-ink-muted-48">
               Extraindo regras e estrutura para iniciar a geração.
             </p>
+          </div>
+        ) : null}
+
+        {phase === "welcome" ? (
+          <div className="p-6">
+            <h3 className="text-base font-semibold text-ink">Iniciar geração</h3>
+            <p className="mt-1 text-sm text-ink-muted-48">
+              Envie um contrato ou selecione um contrato salvo.
+            </p>
+            <div className="mt-4">
+              <ContractUpload onSelect={onSelectContrato} onUpload={onUploadContrato} />
+            </div>
           </div>
         ) : null}
 

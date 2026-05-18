@@ -23,17 +23,14 @@ export function GerarTopBar({
   const safeValue = hasModels ? llmModel || llmModels[0].id : "";
 
   return (
-    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-      <div>
-        <p className="text-sm font-medium text-zinc-900">Base operacional</p>
-      </div>
+    <div className="flex items-center justify-end">
       <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
-        <span>Modelo IA</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-ink-muted-48">Modelo</span>
         <select
           value={safeValue}
           onChange={(event) => onChangeModel(event.target.value)}
           disabled={loadingModels || !hasModels}
-          className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-900"
+          className="h-8 min-w-[220px] rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-900"
         >
           {hasModels ? llmModels.map((model) => (
             <option key={model.id} value={model.id}>

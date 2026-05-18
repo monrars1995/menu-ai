@@ -49,26 +49,22 @@ export default function DashboardPage() {
 
   return (
     <div>
-      {/* Hero — greeting contextual */}
-      <div className="pb-8 pt-2">
-        <h1 className="text-[32px] font-medium tracking-tight text-ink">
+      <div className="pb-5 pt-1">
+        <h1 className="text-[28px] font-semibold tracking-tight text-ink">
           {greeting}, {firstName}
         </h1>
-        <p className="mt-2 text-sm text-ink-muted-48">
-          Bem-vindo ao Menu.AI. Comece gerando um cardápio ou gerencie suas fichas.
-        </p>
         <p
-          className={`mt-1 text-xs ${
+          className={`mt-2 inline-flex rounded-md border px-2 py-1 text-xs ${
             baseStatus === "error" ? "text-red-700" : "text-ink-muted-48"
           }`}
           title={baseMessage}
         >
-          {baseStatus === "loading" ? "Carregando base..." : baseStatus === "error" ? "Base indisponível" : `${baseMessage} no escopo atual.`}
+          {baseStatus === "loading" ? "Carregando base..." : baseStatus === "error" ? "Base indisponível" : baseMessage}
         </p>
       </div>
 
       {/* Stat cards */}
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Link
           href="/gerar"
           className="group flex items-center gap-4 rounded-xl border border-white/10 bg-signature-coral p-5 text-white transition-all duration-200 hover:opacity-95 hover:shadow-lg hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
@@ -126,7 +122,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick-actions */}
-      <div className="mb-8 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
           { href: "/fichas", label: "Fichas Técnicas", icon: BookOpen, color: "text-info" },
           { href: "/ingredientes", label: "Ingredientes", icon: Salad, color: "text-success" },

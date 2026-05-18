@@ -5,24 +5,31 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNavProvider, useMobileNav } from "@/components/layout/mobile-nav";
 import { BaseInfoProvider, useBaseInfo } from "@/lib/base-info-context";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 
 function BaseSummaryChip({ className = "" }: { className?: string }) {
-  const { status, message, title } = useBaseInfo();
+  const { status, message, title, data } = useBaseInfo();
   const tone =
     status === "ready"
       ? "border-hairline text-ink-muted-48"
       : status === "loading"
       ? "border-hairline text-ink-muted-48"
       : "border-red-200 text-red-700";
+  const compactMessage =
+    status === "ready"
+      ? `${data.totalFichas}f • ${data.totalIngredientes}i`
+      : status === "loading"
+      ? "Base..."
+      : "Indisponível";
 
   return (
     <div
-      className={`inline-flex h-8 items-center rounded-md border bg-white px-3 text-xs ${tone} ${className}`}
+      className={`inline-flex h-7 items-center rounded-md border bg-white px-2 text-[11px] font-medium ${tone} ${className}`}
       title={title}
+      aria-label={message}
     >
-      {message}
+      <span className="whitespace-nowrap">{compactMessage}</span>
     </div>
   );
 }
@@ -30,6 +37,23 @@ function BaseSummaryChip({ className = "" }: { className?: string }) {
 function AppChrome({ children }: { children: React.ReactNode }) {
   const { open, closeNav, openNav } = useMobileNav();
   const { title } = useBaseInfo();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem("menuai_sidebar_collapsed");
+    setSidebarCollapsed(saved === "1");
+  }, []);
+
+  function toggleSidebar() {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("menuai_sidebar_collapsed", next ? "1" : "0");
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="flex min-h-screen min-h-[100dvh] bg-canvas">
@@ -61,8 +85,8 @@ function AppChrome({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <Sidebar id="app-sidebar" />
-      <main className="ml-0 flex w-full min-h-0 min-w-0 flex-1 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:ml-60 md:px-6 md:pb-8 md:pt-6">
+      <Sidebar id="app-sidebar" collapsed={sidebarCollapsed} onToggleCollapse={toggleSidebar} />
+      <main className={`ml-0 flex w-full min-h-0 min-w-0 flex-1 flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(3.5rem+env(safe-area-inset-top,0px))] md:px-6 md:pb-8 md:pt-6 ${sidebarCollapsed ? "md:ml-[76px]" : "md:ml-60"}`}>
         <div className="mx-auto w-full max-w-[1320px]">
           <div className="mb-5 hidden items-center justify-end md:flex">
             <BaseSummaryChip />

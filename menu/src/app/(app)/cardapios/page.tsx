@@ -49,7 +49,10 @@ export default function CardapiosPage() {
     setLoading(true);
     setLoadError(null);
     try { const r = await api.cardapios.list(); setCardapios(r.items || []); }
-    catch (e: any) { setLoadError(e?.message || "Não foi possível carregar os cardápios."); }
+    catch (e: any) {
+      const msg = String(e?.message || "Não foi possível carregar os cardápios.");
+      setLoadError(msg.toLowerCase().includes("failed to fetch") ? "Falha de conexão com a API. Verifique login e backend." : msg);
+    }
     setLoading(false);
   }
 
@@ -92,8 +95,14 @@ export default function CardapiosPage() {
       </div>
 
       {loadError ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {loadError}
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <span>{loadError}</span>
+          <button
+            onClick={load}
+            className="shrink-0 rounded-md border border-red-200 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+          >
+            Tentar novamente
+          </button>
         </div>
       ) : null}
 
