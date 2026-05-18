@@ -1,4 +1,4 @@
-# Menu.AI v3.6.18 — Como iniciar
+# Menu.AI v3.6.24 — Como iniciar
 
 ## Stack suportada
 
@@ -50,6 +50,15 @@ Catálogo inicial da aplicação:
 - `queen-3.6` -> `qwen/qwen3.6-plus`
 - `glm-5-1` -> `z-ai/glm-5.1`
 - `kimi-k2.5` -> `moonshotai/kimi-k2.5` (compatibilidade via OpenRouter)
+- `openrouter-openai-gpt-5.5` -> `openrouter/openai/gpt-5.5`
+- `openrouter-openai-gpt-5.4` -> `openrouter/openai/gpt-5.4`
+- `openrouter-openai-gpt-5.4-mini` -> `openrouter/openai/gpt-5.4-mini`
+- `openrouter-openai-gpt-5-mini` -> `openrouter/openai/gpt-5-mini`
+- `openrouter-anthropic-claude-opus-4.5` -> `openrouter/anthropic/claude-opus-4.5`
+- `openrouter-anthropic-claude-sonnet-4.6` -> `openrouter/anthropic/claude-sonnet-4.6`
+- `openrouter-anthropic-claude-opus-4.7` -> `openrouter/anthropic/claude-opus-4.7`
+
+Quando `llm_model` é enviado pelo frontend, a geração passa a respeitar a seleção do usuário como rota primária. Os fallbacks priorizam o mesmo provedor/rota antes de cruzar para alternativas muito diferentes.
 
 Se for usar Supabase:
 

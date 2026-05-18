@@ -1,4 +1,4 @@
-# Menu.AI v3.6.18
+# Menu.AI v3.6.24
 
 Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, PostgreSQL, OpenAI, Gemini, Moonshot e OpenRouter.
 
@@ -19,8 +19,15 @@ Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, Pos
   - `queen-3.6` -> `qwen/qwen3.6-plus`
   - `glm-5-1` -> `z-ai/glm-5.1`
   - `kimi-k2.5` -> `moonshotai/kimi-k2.5` (compatibilidade via OpenRouter)
+  - `openrouter-openai-gpt-5.5` -> `openrouter/openai/gpt-5.5`
+  - `openrouter-openai-gpt-5.4` -> `openrouter/openai/gpt-5.4`
+  - `openrouter-openai-gpt-5.4-mini` -> `openrouter/openai/gpt-5.4-mini`
+  - `openrouter-openai-gpt-5-mini` -> `openrouter/openai/gpt-5-mini`
+  - `openrouter-anthropic-claude-opus-4.5` -> `openrouter/anthropic/claude-opus-4.5`
+  - `openrouter-anthropic-claude-sonnet-4.6` -> `openrouter/anthropic/claude-sonnet-4.6`
+  - `openrouter-anthropic-claude-opus-4.7` -> `openrouter/anthropic/claude-opus-4.7`
 
-Padrão de geração: OpenAI direto (`openai-gpt-5.5`) como modelo principal; Gemini direto e OpenRouter permanecem ativos no catálogo conforme chaves configuradas. O modo padrão de cardápio é `MENUAI_GENERATION_MODE=fast`, com pipeline completo legado disponível por `generation_mode="full"`.
+Padrão de geração: `MENUAI_DEFAULT_LLM_MODEL` só é usado quando o request não envia `llm_model`. Quando o usuário escolhe um modelo no menu, essa seleção passa a ser respeitada como primária e os fallbacks ficam alinhados ao mesmo provedor/rota antes de tentar alternativas mais distantes. O modo padrão de cardápio é `MENUAI_GENERATION_MODE=fast`, com pipeline completo legado disponível por `generation_mode="full"`.
 
 Após a geração, o cardápio é apresentado no chat com prévia operacional, custo gerencial e ações de aprovação ou nova geração. O XLSX exportado inclui abas no formato padrão de refeição/desjejum com pares de colunas de prato e `% Consumo`, além da matriz completa, lista de compras e resumos.
 

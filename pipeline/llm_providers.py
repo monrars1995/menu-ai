@@ -74,7 +74,18 @@ def _get_openrouter_config() -> ProviderConfig:
         api_key=api_key or None,
         api_base=OPENROUTER_API_BASE,
         default_model="queen-3.6",
-        models=["queen-3.6", "glm-5-1", "kimi-k2.5"],
+        models=[
+            "queen-3.6",
+            "glm-5-1",
+            "kimi-k2.5",
+            "openrouter-openai-gpt-5.5",
+            "openrouter-openai-gpt-5.4",
+            "openrouter-openai-gpt-5.4-mini",
+            "openrouter-openai-gpt-5-mini",
+            "openrouter-anthropic-claude-opus-4.5",
+            "openrouter-anthropic-claude-sonnet-4.6",
+            "openrouter-anthropic-claude-opus-4.7",
+        ],
         extra_headers=headers if headers else None,
         enabled=bool(api_key),
         missing_env_message="OPENROUTER_API_KEY não configurada.",
@@ -178,6 +189,62 @@ _CATALOG: tuple[ModelEntry, ...] = (
         provider="openrouter",
         model_string="openrouter/moonshotai/kimi-k2.5",
         description="Compatibilidade legada via OpenRouter para tarefas longas e execução robusta.",
+        supports_review=True,
+    ),
+    ModelEntry(
+        id="openrouter-openai-gpt-5.5",
+        label="GPT-5.5 (OpenRouter)",
+        provider="openrouter",
+        model_string="openrouter/openai/gpt-5.5",
+        description="GPT-5.5 roteado via OpenRouter para manter uma rota alternativa ao provider direto.",
+        supports_review=True,
+    ),
+    ModelEntry(
+        id="openrouter-openai-gpt-5.4",
+        label="GPT-5.4 (OpenRouter)",
+        provider="openrouter",
+        model_string="openrouter/openai/gpt-5.4",
+        description="GPT-5.4 via OpenRouter para geração de alta qualidade com rota redundante.",
+        supports_review=True,
+    ),
+    ModelEntry(
+        id="openrouter-openai-gpt-5.4-mini",
+        label="GPT-5.4 Mini (OpenRouter)",
+        provider="openrouter",
+        model_string="openrouter/openai/gpt-5.4-mini",
+        description="GPT-5.4 Mini via OpenRouter para workloads de menor custo e menor latência.",
+        supports_review=True,
+    ),
+    ModelEntry(
+        id="openrouter-openai-gpt-5-mini",
+        label="GPT-5 Mini (OpenRouter)",
+        provider="openrouter",
+        model_string="openrouter/openai/gpt-5-mini",
+        description="GPT-5 Mini via OpenRouter como variante leve oficialmente disponível.",
+        supports_review=True,
+    ),
+    ModelEntry(
+        id="openrouter-anthropic-claude-opus-4.5",
+        label="Claude Opus 4.5 (OpenRouter)",
+        provider="openrouter",
+        model_string="openrouter/anthropic/claude-opus-4.5",
+        description="Claude Opus 4.5 via OpenRouter para revisão e geração com foco em raciocínio profundo.",
+        supports_review=True,
+    ),
+    ModelEntry(
+        id="openrouter-anthropic-claude-sonnet-4.6",
+        label="Claude Sonnet 4.6 (OpenRouter)",
+        provider="openrouter",
+        model_string="openrouter/anthropic/claude-sonnet-4.6",
+        description="Claude Sonnet 4.6 via OpenRouter para equilíbrio entre qualidade, velocidade e custo.",
+        supports_review=True,
+    ),
+    ModelEntry(
+        id="openrouter-anthropic-claude-opus-4.7",
+        label="Claude Opus 4.7 (OpenRouter)",
+        provider="openrouter",
+        model_string="openrouter/anthropic/claude-opus-4.7",
+        description="Claude Opus 4.7 via OpenRouter para tarefas longas, agentes e revisão criteriosa.",
         supports_review=True,
     ),
 )
@@ -301,29 +368,130 @@ def resolve_model_config(model_id: Optional[str]) -> ResolvedModelConfig:
 
 
 _FALLBACK_CHAINS: Dict[str, List[str]] = {
-    "openai-gpt-5.5": ["gemini-3.1-pro-preview", "kimi-k2.6", "queen-3.6"],
-    "gemini-3.1-pro-preview": ["openai-gpt-5.5", "kimi-k2.6", "queen-3.6"],
-    "gemini-3-flash-preview": ["openai-gpt-5.5", "kimi-k2.6", "queen-3.6"],
-    "gemini-3.1-flash-lite": ["gemini-3-flash-preview", "openai-gpt-5.5", "kimi-k2.6"],
-    "kimi-k2.6": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "queen-3.6"],
+    "openai-gpt-5.5": ["openrouter-openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
+    "gemini-3.1-pro-preview": ["openai-gpt-5.5", "openrouter-anthropic-claude-opus-4.7", "kimi-k2.6"],
+    "gemini-3-flash-preview": ["openrouter-openai-gpt-5.4-mini", "openai-gpt-5.5", "kimi-k2.6"],
+    "gemini-3.1-flash-lite": ["gemini-3-flash-preview", "openrouter-openai-gpt-5-mini", "openai-gpt-5.5"],
+    "kimi-k2.6": ["openai-gpt-5.5", "openrouter-anthropic-claude-sonnet-4.6", "queen-3.6"],
     "queen-3.6": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
-    "glm-5-1": ["openai-gpt-5.5", "queen-3.6", "gemini-3.1-pro-preview"],
-    "kimi-k2.5": ["kimi-k2.6", "openai-gpt-5.5", "queen-3.6"],
+    "glm-5-1": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
+    "kimi-k2.5": ["kimi-k2.6", "openai-gpt-5.5", "gemini-3.1-pro-preview"],
+    "openrouter-openai-gpt-5.5": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
+    "openrouter-openai-gpt-5.4": ["openrouter-openai-gpt-5.5", "openai-gpt-5.5", "gemini-3.1-pro-preview"],
+    "openrouter-openai-gpt-5.4-mini": ["openrouter-openai-gpt-5-mini", "gemini-3-flash-preview", "openai-gpt-5.5"],
+    "openrouter-openai-gpt-5-mini": ["gemini-3.1-flash-lite", "openrouter-openai-gpt-5.4-mini", "openai-gpt-5.5"],
+    "openrouter-anthropic-claude-opus-4.5": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
+    "openrouter-anthropic-claude-sonnet-4.6": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
+    "openrouter-anthropic-claude-opus-4.7": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
 }
 
 
-def get_fallback_chain(model_id: Optional[str]) -> List[str]:
+_SELECTION_RESPECTING_FALLBACK_CHAINS: Dict[str, List[str]] = {
+    "openai-gpt-5.5": [
+        "openrouter-openai-gpt-5.5",
+        "openrouter-openai-gpt-5.4",
+        "openrouter-openai-gpt-5.4-mini",
+        "openrouter-openai-gpt-5-mini",
+    ],
+    "gemini-3.1-pro-preview": ["gemini-3-flash-preview", "gemini-3.1-flash-lite"],
+    "gemini-3-flash-preview": ["gemini-3.1-flash-lite", "gemini-3.1-pro-preview"],
+    "gemini-3.1-flash-lite": ["gemini-3-flash-preview", "gemini-3.1-pro-preview"],
+    "kimi-k2.6": [],
+    "queen-3.6": [
+        "glm-5-1",
+        "kimi-k2.5",
+        "openrouter-openai-gpt-5.5",
+        "openrouter-anthropic-claude-sonnet-4.6",
+        "openrouter-anthropic-claude-opus-4.7",
+    ],
+    "glm-5-1": [
+        "queen-3.6",
+        "kimi-k2.5",
+        "openrouter-openai-gpt-5.5",
+        "openrouter-anthropic-claude-sonnet-4.6",
+        "openrouter-anthropic-claude-opus-4.7",
+    ],
+    "kimi-k2.5": [
+        "queen-3.6",
+        "glm-5-1",
+        "openrouter-openai-gpt-5.5",
+        "openrouter-anthropic-claude-sonnet-4.6",
+        "openrouter-anthropic-claude-opus-4.7",
+    ],
+    "openrouter-openai-gpt-5.5": [
+        "openrouter-openai-gpt-5.4",
+        "openrouter-openai-gpt-5.4-mini",
+        "openrouter-openai-gpt-5-mini",
+        "openrouter-anthropic-claude-sonnet-4.6",
+        "queen-3.6",
+    ],
+    "openrouter-openai-gpt-5.4": [
+        "openrouter-openai-gpt-5.5",
+        "openrouter-openai-gpt-5.4-mini",
+        "openrouter-openai-gpt-5-mini",
+        "openrouter-anthropic-claude-sonnet-4.6",
+        "queen-3.6",
+    ],
+    "openrouter-openai-gpt-5.4-mini": [
+        "openrouter-openai-gpt-5-mini",
+        "openrouter-openai-gpt-5.4",
+        "openrouter-openai-gpt-5.5",
+        "glm-5-1",
+    ],
+    "openrouter-openai-gpt-5-mini": [
+        "openrouter-openai-gpt-5.4-mini",
+        "openrouter-openai-gpt-5.4",
+        "openrouter-openai-gpt-5.5",
+        "glm-5-1",
+    ],
+    "openrouter-anthropic-claude-opus-4.5": [
+        "openrouter-anthropic-claude-sonnet-4.6",
+        "openrouter-anthropic-claude-opus-4.7",
+        "queen-3.6",
+        "glm-5-1",
+        "openrouter-openai-gpt-5.5",
+    ],
+    "openrouter-anthropic-claude-sonnet-4.6": [
+        "openrouter-anthropic-claude-opus-4.7",
+        "openrouter-anthropic-claude-opus-4.5",
+        "queen-3.6",
+        "glm-5-1",
+        "openrouter-openai-gpt-5.5",
+    ],
+    "openrouter-anthropic-claude-opus-4.7": [
+        "openrouter-anthropic-claude-sonnet-4.6",
+        "openrouter-anthropic-claude-opus-4.5",
+        "queen-3.6",
+        "glm-5-1",
+        "openrouter-openai-gpt-5.5",
+    ],
+}
+
+
+def get_fallback_chain(model_id: Optional[str], *, respect_selection: bool = False) -> List[str]:
     mid = (model_id or "").strip() or get_default_model_id()
     providers = get_enabled_providers()
     out: List[str] = []
-    for candidate in _FALLBACK_CHAINS.get(mid, []):
+    source = _SELECTION_RESPECTING_FALLBACK_CHAINS if respect_selection else _FALLBACK_CHAINS
+    for candidate in source.get(mid, []):
         entry = _ID_TO_ENTRY.get(candidate)
         if entry and entry.provider in providers:
             out.append(candidate)
     return out
 
 
-_REVIEW_FALLBACK_CHAIN: List[str] = ["queen-3.6", "glm-5-1", "kimi-k2.5"]
+_REVIEW_FALLBACK_CHAIN: List[str] = [
+    "queen-3.6",
+    "glm-5-1",
+    "kimi-k2.5",
+    "openrouter-openai-gpt-5.5",
+    "openrouter-openai-gpt-5.4",
+    "openrouter-openai-gpt-5.4-mini",
+    "openrouter-openai-gpt-5-mini",
+    "openrouter-anthropic-claude-opus-4.7",
+    "openrouter-anthropic-claude-sonnet-4.6",
+    "openrouter-anthropic-claude-opus-4.5",
+]
 
 
 def get_review_fallback_chain(model_id: Optional[str]) -> List[str]:

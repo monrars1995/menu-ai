@@ -1,6 +1,6 @@
 
 """
-Menu.AI — Backend FastAPI v3.6.23
+Menu.AI — Backend FastAPI v3.6.24
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
@@ -30,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.23"
+APP_VERSION = "3.6.24"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)

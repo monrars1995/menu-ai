@@ -92,7 +92,8 @@ class ModelRouter:
     ):
         from pipeline.llm_providers import get_effective_default_model_id, get_fallback_chain
 
-        self.model_id = (model_id or "").strip() or get_effective_default_model_id()
+        requested_model_id = (model_id or "").strip()
+        self.model_id = requested_model_id or get_effective_default_model_id()
         self.job_id = job_id
         self.empresa_id = empresa_id
         self.step_label = step_label
@@ -107,7 +108,10 @@ class ModelRouter:
         if fallback_chain_override is not None:
             self._fallback_chain = [m for m in fallback_chain_override if m and m != self.model_id]
         else:
-            self._fallback_chain = get_fallback_chain(self.model_id)
+            self._fallback_chain = get_fallback_chain(
+                self.model_id,
+                respect_selection=bool(requested_model_id),
+            )
         self.on_attempt = on_attempt
 
     def _structured_log(self, event: str, **fields: Any) -> None:

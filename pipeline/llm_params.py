@@ -6,7 +6,12 @@ from typing import Any, Dict, Optional
 
 def _is_openai_gpt5(model_string: str) -> bool:
     m = (model_string or "").strip().lower()
-    return m.startswith("openai/gpt-5") or m.startswith("gpt-5")
+    return (
+        m.startswith("openai/gpt-5")
+        or m.startswith("gpt-5")
+        or "/gpt-5" in m
+        or "openai/gpt-5" in m
+    )
 
 
 def _is_moonshot_kimi_k26(model_string: str, provider: Optional[str]) -> bool:
