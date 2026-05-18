@@ -128,19 +128,38 @@ const DEFAULT_TIMEOUT_BUDGET_SECONDS = 300;
 const STALE_SYNC_WARNING_MS = 45000;
 const STALE_SYNC_TIMEOUT_MS = 240000;
 
-function _cleanList(items?: string[] | Record<string, unknown>): string[] {
+function _cleanList(items?: unknown[] | Record<string, unknown> | null): string[] {
   if (!items) return [];
-  const raw = Array.isArray(items)
-    ? items
-    : Object.entries(items).map(([key, value]) => `${key}: ${String(value)}`);
-  if (!raw.length) return [];
-  return Array.from(
-    new Set(
-      raw
-        .map((x) => String(x || "").trim())
-        .filter(Boolean)
-    )
-  );
+  const formatValue = (value: unknown, fallbackKey?: string): string[] => {
+    if (value == null) return [];
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      const normalized = String(value).trim();
+      return normalized ? [normalized] : [];
+    }
+    if (Array.isArray(value)) {
+      return value.flatMap((item) => formatValue(item, fallbackKey));
+    }
+    if (typeof value === "object") {
+      const record = value as Record<string, unknown>;
+      const nome = String(record.nome ?? record.nome_dieta ?? fallbackKey ?? "").trim();
+      const tipo = String(record.tipo ?? "").trim();
+      const frequencia = String(record.frequencia ?? record.valor ?? "").trim();
+      const regras = String(record.regras ?? record.regra ?? "").trim();
+      const head = [nome, tipo && tipo !== nome ? tipo : ""].filter(Boolean).join(" - ");
+      const tail = [frequencia, regras].filter(Boolean).join(", ");
+      if (head || tail) {
+        return [[head, tail].filter(Boolean).join(": ").trim()];
+      }
+      return Object.entries(record).flatMap(([key, nested]) => formatValue(nested, key));
+    }
+    return [];
+  };
+
+  const normalized = Array.isArray(items)
+    ? items.flatMap((item) => formatValue(item))
+    : Object.entries(items).flatMap(([key, value]) => formatValue(value, key));
+  if (!normalized.length) return [];
+  return Array.from(new Set(normalized.map((item) => item.trim()).filter(Boolean)));
 }
 
 function buildContratoRestricoesFixas(analise: ContratoAnalise | null): string {
@@ -990,7 +1009,7 @@ export function useChatGenerator() {
           const backendLastUpdateAt = snapshot?.last_update_at ? Date.parse(String(snapshot.last_update_at)) : NaN;
           const timeoutBudgetSeconds = Number(snapshot?.timeout_budget_seconds || DEFAULT_TIMEOUT_BUDGET_SECONDS);
           applyStaleThresholdFromBudget(timeoutBudgetSeconds);
-          if (status === "executando") {
+          if (status === "executando" || status === "iniciando") {
             const staleByBackend = Number.isFinite(backendLastUpdateAt)
               ? Date.now() - Number(backendLastUpdateAt)
               : 0;
@@ -1087,8 +1106,8 @@ export function useChatGenerator() {
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        lastRealtimeUpdateRef.current = Date.now();
         if (data.type === "ping") return;
+        lastRealtimeUpdateRef.current = Date.now();
         streamRetryCountRef.current[jobId] = 0;
         if (activeJobIdRef.current && activeJobIdRef.current !== jobId) {
           return;

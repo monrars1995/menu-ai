@@ -19,7 +19,7 @@ from typing import Optional
 import pandas as pd
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile, Depends
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -30,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.15"
+APP_VERSION = "3.6.16"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -442,7 +442,7 @@ async def health():
 # ============================================================
 # UPLOAD / GERAÇÃO
 # ============================================================
-from services.geracao import executar_crew, get_job_or_restore
+from services.geracao import get_job_or_restore, launch_generation_job
 
 
 @app.post("/api/upload-contrato")
@@ -474,7 +474,6 @@ async def upload_contrato(
 async def gerar_cardapio(
     request: Request,
     body: GerarCardapioRequest,
-    background_tasks: BackgroundTasks,
     usuario: Optional[Usuario] = Depends(get_usuario_geracao),
 ):
     if body.empresa_id and str(body.empresa_id).strip():
@@ -548,24 +547,29 @@ async def gerar_cardapio(
         except Exception as e:
             print(f"⚠️  Não foi possível persistir job: {e}")
 
-    background_tasks.add_task(
-        executar_crew,
-        job_id,
-        body_resolved.dias,
-        body_resolved.target_custo_total,
-        body_resolved.target_custo_proteico,
-        body_resolved.restricoes_usuario,
-        body_resolved.refeicoes,
-        eid,
-        body_resolved.contrato_id,
-        body_resolved.nome_cardapio,
-        body_resolved.llm_model,
-        body_resolved.generation_mode,
-        upload_dir=UPLOAD_DIR,
-        db_ok=_db_ok,
-        contrato_analise_confirmada=body_resolved.contrato_analise_confirmada,
-    )
-    return {"job_id": job_id, "status": "iniciando"}
+    try:
+        launch_generation_job(
+            job_id,
+            body_resolved.dias,
+            body_resolved.target_custo_total,
+            body_resolved.target_custo_proteico,
+            body_resolved.restricoes_usuario,
+            body_resolved.refeicoes,
+            eid,
+            body_resolved.contrato_id,
+            body_resolved.nome_cardapio,
+            body_resolved.llm_model,
+            body_resolved.generation_mode,
+            upload_dir=UPLOAD_DIR,
+            db_ok=_db_ok,
+            contrato_analise_confirmada=body_resolved.contrato_analise_confirmada,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao iniciar o worker de geração: {exc}",
+        ) from exc
+    return {"job_id": job_id, "status": "executando"}
 
 
 @app.post("/api/gerar/upload")
@@ -579,7 +583,6 @@ async def gerar_cardapio_com_upload(
     restricoes_usuario: str = Form(""),
     nome_cardapio: Optional[str] = Form(None),
     llm_model: Optional[str] = Form(None),
-    background_tasks: BackgroundTasks = None,
     usuario: Optional[Usuario] = Depends(get_usuario_geracao),
 ):
     """Upload/cadastro de contrato para o fluxo assistido.

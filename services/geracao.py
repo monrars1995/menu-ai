@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+import queue
 import re
 import traceback
 import time
@@ -21,6 +22,7 @@ from services import job_state
 from services.fichas_db_stats import format_fichas_mensagem, get_fichas_db_stats
 
 logger = logging.getLogger("menuai.jobs")
+WORKER_LAUNCH_STUCK_SECONDS = 30.0
 
 
 def _iso_now() -> str:
@@ -35,6 +37,149 @@ def _log_job_event(job_id: str, event: str, **fields) -> None:
         **fields,
     }
     logger.info("job_event=%s", json.dumps(payload, ensure_ascii=False, default=str))
+
+
+def _persist_job_snapshot(
+    job_id: str,
+    *,
+    db_ok: bool,
+    status: Optional[str] = None,
+    progress: Optional[int] = None,
+    error: Optional[str] = None,
+    parametros_patch: Optional[dict] = None,
+) -> None:
+    if not db_ok:
+        return
+    try:
+        from database.connection import SessionLocal
+        from database.models import JobAgente
+
+        db = SessionLocal()
+        try:
+            row = db.query(JobAgente).filter(JobAgente.job_id == job_id).first()
+            if not row:
+                return
+            if status is not None:
+                row.status = status
+            if progress is not None:
+                row.progresso = progress
+            if error is not None:
+                row.erro = error
+            if parametros_patch:
+                payload = row.parametros_json if isinstance(row.parametros_json, dict) else {}
+                row.parametros_json = {**payload, **parametros_patch}
+            row.updated_at = datetime.utcnow()
+            db.commit()
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("persist_job_snapshot_failed job_id=%s", job_id)
+
+
+def _mark_job_error(
+    job_id: str,
+    message: str,
+    *,
+    db_ok: bool,
+    error_type: str,
+    timeout_reason: Optional[str] = None,
+    progress: Optional[int] = None,
+    emit_queue: bool = False,
+) -> dict:
+    now_iso = _iso_now()
+    now_ts = time.time()
+    job = job_state.jobs.setdefault(
+        job_id,
+        {
+            "status": "erro",
+            "progress": progress or 0,
+            "logs": [],
+            "result": None,
+            "error": message,
+            "error_type": error_type,
+            "timeout_reason": timeout_reason,
+            "config": {},
+            "started_at": now_iso,
+            "last_update_at": now_iso,
+            "started_ts": now_ts,
+            "last_update_ts": now_ts,
+            "current_step": "erro",
+        },
+    )
+    job["status"] = "erro"
+    job["error"] = message
+    job["error_type"] = error_type
+    job["timeout_reason"] = timeout_reason
+    job["progress"] = progress if progress is not None else int(job.get("progress") or 0)
+    job["current_step"] = "erro"
+    job["last_update_at"] = now_iso
+    job["last_update_ts"] = now_ts
+    _persist_job_snapshot(
+        job_id,
+        db_ok=db_ok,
+        status="erro",
+        progress=job["progress"],
+        error=message,
+        parametros_patch={
+            "error_type": error_type,
+            "timeout_reason": timeout_reason,
+        },
+    )
+    if emit_queue:
+        q = job_state.job_queues.setdefault(job_id, queue.Queue())
+        payload = {
+            "type": "error",
+            "message": message,
+            "progress": job["progress"],
+            "error_type": error_type,
+            "timeout_reason": timeout_reason,
+        }
+        job.setdefault("logs", []).append(payload)
+        q.put(payload)
+    _log_job_event(
+        job_id,
+        "job_marked_error",
+        error_type=error_type,
+        timeout_reason=timeout_reason,
+        progress=job["progress"],
+        error=message,
+    )
+    return job
+
+
+def reconcile_runtime_job_state(job_id: str, db_ok: bool) -> Optional[dict]:
+    job = job_state.jobs.get(job_id)
+    if not job:
+        return None
+    status = str(job.get("status") or "").strip().lower()
+    if status not in {"iniciando", "executando"}:
+        return job
+    current_step = str(job.get("current_step") or "").strip().lower()
+    now_ts = time.time()
+    started_ts = float(job.get("started_ts") or now_ts)
+    last_update_ts = float(job.get("last_update_ts") or started_ts)
+    launch_stuck = (
+        status == "iniciando"
+        or current_step in {"agendando worker", "iniciando worker", "iniciando"}
+    )
+    if not launch_stuck:
+        return job
+    stale_seconds = now_ts - last_update_ts
+    if stale_seconds < WORKER_LAUNCH_STUCK_SECONDS:
+        return job
+    message = (
+        "A geração não iniciou corretamente no servidor. "
+        "Tente novamente. Se persistir, troque o modelo ou reduza os dias."
+    )
+    return _mark_job_error(
+        job_id,
+        message,
+        db_ok=db_ok,
+        error_type="worker_launch_timeout",
+        timeout_reason=f"no_worker_progress_for_{int(WORKER_LAUNCH_STUCK_SECONDS)}s",
+        progress=int(job.get("progress") or 0),
+        emit_queue=True,
+    )
 
 
 def _hydrate_job_from_db(job_id: str, db_ok: bool) -> bool:
@@ -119,10 +264,131 @@ def _hydrate_job_from_db(job_id: str, db_ok: bool) -> bool:
 
 def get_job_or_restore(job_id: str, db_ok: bool) -> Optional[dict]:
     if job_id in job_state.jobs:
-        return job_state.jobs[job_id]
+        return reconcile_runtime_job_state(job_id, db_ok)
     if _hydrate_job_from_db(job_id, db_ok):
-        return job_state.jobs.get(job_id)
+        return reconcile_runtime_job_state(job_id, db_ok)
     return None
+
+
+def launch_generation_job(
+    job_id: str,
+    dias: int,
+    target_custo_total: float,
+    target_custo_proteico: float,
+    restricoes_usuario: str,
+    refeicoes: Optional[List[str]],
+    empresa_id: Optional[str],
+    contrato_id: Optional[str],
+    nome_cardapio: Optional[str],
+    llm_model: Optional[str],
+    generation_mode: Optional[str],
+    *,
+    upload_dir: Path,
+    db_ok: bool,
+    contrato_analise_confirmada: bool = False,
+) -> threading.Thread:
+    now_iso = _iso_now()
+    now_ts = time.time()
+    job = job_state.jobs.setdefault(
+        job_id,
+        {
+            "status": "iniciando",
+            "progress": 0,
+            "logs": [],
+            "result": None,
+            "error": None,
+            "config": {},
+            "started_at": now_iso,
+            "last_update_at": now_iso,
+            "started_ts": now_ts,
+            "last_update_ts": now_ts,
+            "current_step": "iniciando",
+        },
+    )
+    job.setdefault("logs", [])
+    job.setdefault("config", {})
+    job.setdefault("started_at", now_iso)
+    job.setdefault("started_ts", now_ts)
+    job["status"] = "executando"
+    job["error"] = None
+    job["error_type"] = None
+    job["timeout_reason"] = None
+    job["current_step"] = "agendando worker"
+    job["last_update_at"] = now_iso
+    job["last_update_ts"] = now_ts
+    job_state.job_queues.setdefault(job_id, queue.Queue())
+    _persist_job_snapshot(
+        job_id,
+        db_ok=db_ok,
+        status="executando",
+        progress=int(job.get("progress") or 0),
+        error=None,
+        parametros_patch={"launch_mode": "thread"},
+    )
+    _log_job_event(
+        job_id,
+        "job_launch_requested",
+        generation_mode=generation_mode,
+        llm_model=llm_model,
+        empresa_id=empresa_id,
+        contrato_id=contrato_id,
+    )
+
+    def _runner():
+        _log_job_event(
+            job_id,
+            "job_thread_booted",
+            thread_name=threading.current_thread().name,
+        )
+        try:
+            executar_crew(
+                job_id,
+                dias,
+                target_custo_total,
+                target_custo_proteico,
+                restricoes_usuario,
+                refeicoes,
+                empresa_id,
+                contrato_id,
+                nome_cardapio,
+                llm_model,
+                generation_mode,
+                upload_dir=upload_dir,
+                db_ok=db_ok,
+                contrato_analise_confirmada=contrato_analise_confirmada,
+            )
+        except BaseException as exc:
+            logger.exception("job_thread_crashed job_id=%s", job_id)
+            _mark_job_error(
+                job_id,
+                f"Falha ao executar o worker de geração: {exc}",
+                db_ok=db_ok,
+                error_type="worker_thread_crash",
+                timeout_reason="worker_thread_exception",
+                progress=int((job_state.jobs.get(job_id) or {}).get("progress") or 0),
+                emit_queue=True,
+            )
+
+    worker = threading.Thread(
+        target=_runner,
+        name=f"menuai-job-{job_id}",
+        daemon=True,
+    )
+    try:
+        worker.start()
+    except Exception as exc:
+        logger.exception("job_thread_start_failed job_id=%s", job_id)
+        _mark_job_error(
+            job_id,
+            f"Falha ao iniciar o worker de geração: {exc}",
+            db_ok=db_ok,
+            error_type="worker_launch_failed",
+            timeout_reason="worker_thread_start_failed",
+            progress=int(job.get("progress") or 0),
+            emit_queue=True,
+        )
+        raise
+    return worker
 
 
 def executar_crew(
