@@ -30,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.16"
+APP_VERSION = "3.6.17"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -58,6 +58,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
+logger = logging.getLogger("menuai.app")
 
 
 class _SkipHealthcheckAccessLogFilter(logging.Filter):
@@ -569,7 +570,18 @@ async def gerar_cardapio(
             status_code=500,
             detail=f"Falha ao iniciar o worker de geração: {exc}",
         ) from exc
-    return {"job_id": job_id, "status": "executando"}
+    runtime_status = str((job_state.jobs.get(job_id) or {}).get("status") or "executando")
+    logger.info(
+        "generate_request_v3 job_id=%s status=%s mode=%s confirmed=%s model=%s contrato_id=%s empresa_id=%s",
+        job_id,
+        runtime_status,
+        body_resolved.generation_mode,
+        body_resolved.contrato_analise_confirmada,
+        body_resolved.llm_model,
+        body_resolved.contrato_id,
+        eid,
+    )
+    return {"job_id": job_id, "status": runtime_status, "launch_mode": "thread"}
 
 
 @app.post("/api/gerar/upload")
@@ -836,7 +848,9 @@ async def confirmar_geracao(
     - `confirmar: false` → cancela o job
     - `ajustes` (opcional) → texto livre com observações que serão incorporadas à geração
     """
-    j = job_state.jobs.get(job_id)
+    from services.geracao import get_job_or_restore
+
+    j = get_job_or_restore(job_id)
     if not j:
         raise HTTPException(404, f"Job '{job_id}' não encontrado")
 
@@ -862,6 +876,30 @@ async def confirmar_geracao(
 
     # Retoma a execução — muda status para que o loop no worker desbloqueie
     j["status"] = "executando"
+    j["last_update_at"] = datetime.utcnow().isoformat()
+    j["last_update_ts"] = time.time()
+
+    if _db_ok:
+        try:
+            from database.connection import SessionLocal
+            from database.models import JobAgente
+
+            db = SessionLocal()
+            row = db.query(JobAgente).filter(JobAgente.job_id == job_id).first()
+            if row:
+                row.status = "executando"
+                row.updated_at = datetime.utcnow()
+                db.commit()
+            db.close()
+        except Exception:
+            pass
+
+    logger.info(
+        "generate_confirm_v2 job_id=%s confirmed=%s ajustes=%s",
+        job_id,
+        body.confirmar,
+        bool(body.ajustes),
+    )
 
     return {
         "ok": True,
