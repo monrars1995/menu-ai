@@ -1,4 +1,4 @@
-# Menu.AI v3.6.24 — Como iniciar
+# Menu.AI v3.6.25 — Como iniciar
 
 ## Stack suportada
 

@@ -1,4 +1,4 @@
-# Menu.AI v3.6.24
+# Menu.AI v3.6.25
 
 Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, PostgreSQL, OpenAI, Gemini, Moonshot e OpenRouter.
 

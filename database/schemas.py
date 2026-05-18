@@ -440,6 +440,13 @@ LlmModelId = Literal[
     "queen-3.6",
     "glm-5-1",
     "kimi-k2.5",
+    "openrouter-openai-gpt-5.5",
+    "openrouter-openai-gpt-5.4",
+    "openrouter-openai-gpt-5.4-mini",
+    "openrouter-openai-gpt-5-mini",
+    "openrouter-anthropic-claude-opus-4.5",
+    "openrouter-anthropic-claude-sonnet-4.6",
+    "openrouter-anthropic-claude-opus-4.7",
 ]
 
 GenerationMode = Literal["fast", "full"]
