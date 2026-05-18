@@ -29,9 +29,12 @@ from pipeline.llm_providers import (
     api_models_payload as _api_payload,
     get_default_model_id as _default_id,
     get_effective_default_model_id as _effective_default_id,
+    get_generation_model_ids as _generation_ids,
     get_model_entry as _get_entry,
     get_model_label as _get_label,
     get_model_string as _get_string,
+    get_review_model_ids as _review_ids,
+    is_review_capable as _is_review_capable,
     resolve_model_config as _resolve_config,
 )
 
@@ -56,6 +59,16 @@ _ENV_SLUG_KIMI = "OPENROUTER_SLUG_KIMI_K25"
 def allowed_llm_model_ids() -> List[str]:
     """IDs de modelos permitidos (provedores habilitados)."""
     return _allowed_ids()
+
+
+def generation_llm_model_ids() -> List[str]:
+    """IDs de modelos disponíveis para geração."""
+    return _generation_ids()
+
+
+def review_llm_model_ids() -> List[str]:
+    """IDs de modelos disponíveis para revisão consultiva (somente OpenRouter)."""
+    return _review_ids()
 
 
 def effective_default_model_id() -> str:
@@ -202,6 +215,34 @@ def assert_llm_model_allowed_for_generation(db: "Session", model_id: Optional[st
         )
 
 
+def assert_llm_model_allowed_for_review(db: "Session", model_id: Optional[str]) -> None:
+    """Reviewer deve ser sempre OpenRouter e estar habilitado."""
+    from fastapi import HTTPException
+
+    mid = (model_id or "").strip()
+    if not mid:
+        return
+    if mid not in _ID_TO_ENTRY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modelo reviewer inválido: {mid}. Use um de: {list(_ID_TO_ENTRY.keys())}",
+        )
+    if not _is_review_capable(mid):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modelo reviewer inválido para revisão consultiva: {mid}. Escolha um modelo OpenRouter habilitado.",
+        )
+    try:
+        _resolve_config(mid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not is_llm_model_enabled_in_db(db, mid):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modelo reviewer desactivado pelo administrador: {mid}",
+        )
+
+
 # ============================================================
 # API PAYLOAD
 # ============================================================
@@ -228,6 +269,8 @@ def api_models_payload(
         models = payload.get("models", [])
         models = [{**m, "enabled": True} for m in models]
         payload["models"] = models
+        payload["generation_models"] = [{**m, "enabled": True} for m in payload.get("generation_models", [])]
+        payload["review_models"] = [{**m, "enabled": True} for m in payload.get("review_models", [])]
     else:
         emap = _enabled_map_from_db(db)
         models = []
@@ -240,6 +283,26 @@ def api_models_payload(
             item["enabled"] = en
             models.append(item)
         payload["models"] = models
+        generation_models = []
+        for m in payload.get("generation_models", []):
+            mid = m.get("id", "")
+            en = emap.get(mid, True)
+            if only_enabled and not en:
+                continue
+            item = dict(m)
+            item["enabled"] = en
+            generation_models.append(item)
+        payload["generation_models"] = generation_models
+        review_models = []
+        for m in payload.get("review_models", []):
+            mid = m.get("id", "")
+            en = emap.get(mid, True)
+            if only_enabled and not en:
+                continue
+            item = dict(m)
+            item["enabled"] = en
+            review_models.append(item)
+        payload["review_models"] = review_models
     
     # Adiciona campos legados para compatibilidade
     payload["provider"] = "multi"

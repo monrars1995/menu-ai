@@ -281,6 +281,9 @@ def launch_generation_job(
     contrato_id: Optional[str],
     nome_cardapio: Optional[str],
     llm_model: Optional[str],
+    review_llm_model: Optional[str],
+    review_enabled: bool,
+    review_strategy: str,
     generation_mode: Optional[str],
     *,
     upload_dir: Path,
@@ -330,6 +333,9 @@ def launch_generation_job(
         "job_launch_requested",
         generation_mode=generation_mode,
         llm_model=llm_model,
+        review_llm_model=review_llm_model,
+        review_enabled=review_enabled,
+        review_strategy=review_strategy,
         empresa_id=empresa_id,
         contrato_id=contrato_id,
     )
@@ -352,6 +358,9 @@ def launch_generation_job(
                 contrato_id,
                 nome_cardapio,
                 llm_model,
+                review_llm_model,
+                review_enabled,
+                review_strategy,
                 generation_mode,
                 upload_dir=upload_dir,
                 db_ok=db_ok,
@@ -402,6 +411,9 @@ def executar_crew(
     contrato_id: Optional[str],
     nome_cardapio: Optional[str],
     llm_model: Optional[str],
+    review_llm_model: Optional[str],
+    review_enabled: bool,
+    review_strategy: str,
     generation_mode: Optional[str],
     *,
     upload_dir: Path,
@@ -588,6 +600,9 @@ def executar_crew(
             "job_worker_started",
             generation_mode=generation_mode_effective,
             llm_model=llm_model,
+            review_llm_model=review_llm_model,
+            review_enabled=review_enabled,
+            review_strategy=review_strategy,
             contrato_id=contrato_id,
             empresa_id=empresa_id,
             stuck_threshold_seconds=stuck_threshold_seconds,
@@ -636,6 +651,9 @@ def executar_crew(
                 "target_custo_proteico": target_custo_proteico,
                 "refeicoes": refeicoes,
                 "llm_model": llm_model,
+                "review_llm_model": review_llm_model,
+                "review_enabled": review_enabled,
+                "review_strategy": review_strategy,
                 "generation_mode": generation_mode or os.getenv("MENUAI_GENERATION_MODE", "fast"),
             },
         )
@@ -782,6 +800,9 @@ def executar_crew(
                 regras_contrato=crew.ctx.regras_contrato or contrato_regras_db or {},
                 started_ts=started_ts,
                 progress=progress,
+                review_llm_model=review_llm_model,
+                review_enabled=review_enabled,
+                review_strategy=review_strategy,
             )
             result = fast_result["markdown"]
             job_state.jobs[job_id]["status"] = "concluido"
@@ -790,6 +811,67 @@ def executar_crew(
             job_state.jobs[job_id]["current_step"] = "concluído"
             job_state.jobs[job_id]["last_update_at"] = _iso_now()
             job_state.jobs[job_id]["last_update_ts"] = time.time()
+            job_state.jobs[job_id]["generator_model"] = fast_result.get("generator_model_used")
+            job_state.jobs[job_id]["generator_provider"] = fast_result.get("generator_provider_used")
+            job_state.jobs[job_id]["review_model"] = fast_result.get("review_model_used")
+            job_state.jobs[job_id]["review_provider"] = fast_result.get("review_provider_used")
+            job_state.jobs[job_id]["review_status"] = fast_result.get("review_status")
+            job_state.jobs[job_id]["review_summary"] = fast_result.get("review_summary")
+            job_state.jobs[job_id]["review_warnings"] = fast_result.get("review_warnings") or []
+            job_state.jobs[job_id]["review_findings"] = fast_result.get("review_findings") or []
+            job_state.jobs[job_id]["review_applied_fixes_count"] = int(fast_result.get("review_applied_fixes_count") or 0)
+            job_state.jobs[job_id]["degraded_generation"] = bool(fast_result.get("degraded_generation"))
+            job_state.jobs[job_id].setdefault("config", {})
+            job_state.jobs[job_id]["config"].update(
+                {
+                    "duration_seconds": fast_result.get("duration_seconds"),
+                    "attempts": fast_result.get("attempts"),
+                    "generator_model_used": fast_result.get("generator_model_used"),
+                    "generator_provider_used": fast_result.get("generator_provider_used"),
+                    "review_model_used": fast_result.get("review_model_used"),
+                    "review_provider_used": fast_result.get("review_provider_used"),
+                    "review_status": fast_result.get("review_status"),
+                    "review_summary": fast_result.get("review_summary"),
+                    "review_warnings": fast_result.get("review_warnings") or [],
+                    "review_findings": fast_result.get("review_findings") or [],
+                    "review_applied_fixes_count": int(fast_result.get("review_applied_fixes_count") or 0),
+                    "degraded_generation": bool(fast_result.get("degraded_generation")),
+                }
+            )
+            _persist_job_snapshot(
+                job_id,
+                db_ok=db_ok,
+                status="concluido",
+                progress=100,
+                error=None,
+                parametros_patch=job_state.jobs[job_id]["config"],
+            )
+            if db_ok:
+                try:
+                    from database.connection import SessionLocal
+                    from database.models import JobAgente
+
+                    db_fast = SessionLocal()
+                    try:
+                        job_db_fast = db_fast.query(JobAgente).filter(JobAgente.job_id == job_id).first()
+                        if job_db_fast:
+                            job_db_fast.status = "concluido"
+                            job_db_fast.progresso = 100
+                            job_db_fast.resultado_raw = result
+                            if fast_result.get("cardapio_id"):
+                                job_db_fast.cardapio_id = str(fast_result["cardapio_id"])
+                            job_db_fast.concluido_em = datetime.utcnow()
+                            job_db_fast.updated_at = datetime.utcnow()
+                            params = job_db_fast.parametros_json if isinstance(job_db_fast.parametros_json, dict) else {}
+                            job_db_fast.parametros_json = {
+                                **params,
+                                **job_state.jobs[job_id]["config"],
+                            }
+                            db_fast.commit()
+                    finally:
+                        db_fast.close()
+                except Exception:
+                    logger.exception("persist_fast_job_completion_failed job_id=%s", job_id)
             emit(
                 "log",
                 agent="Sistema",
@@ -805,6 +887,16 @@ def executar_crew(
                 attempts=fast_result.get("attempts"),
                 model_used=fast_result.get("model_used"),
                 provider=fast_result.get("provider_used"),
+                generator_model=fast_result.get("generator_model_used"),
+                generator_provider=fast_result.get("generator_provider_used"),
+                review_model=fast_result.get("review_model_used"),
+                review_provider=fast_result.get("review_provider_used"),
+                review_status=fast_result.get("review_status"),
+                review_summary=fast_result.get("review_summary"),
+                review_warnings=fast_result.get("review_warnings") or [],
+                review_findings=fast_result.get("review_findings") or [],
+                review_applied_fixes_count=int(fast_result.get("review_applied_fixes_count") or 0),
+                degraded_generation=bool(fast_result.get("degraded_generation")),
             )
             return
 

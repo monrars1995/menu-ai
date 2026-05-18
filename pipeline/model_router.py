@@ -87,6 +87,7 @@ class ModelRouter:
         step_index: Optional[int] = None,
         timeout_seconds: Optional[float] = None,
         max_attempts: Optional[int] = None,
+        fallback_chain_override: Optional[List[str]] = None,
         on_attempt: Optional[Callable[[dict[str, Any]], None]] = None,
     ):
         from pipeline.llm_providers import get_effective_default_model_id, get_fallback_chain
@@ -103,7 +104,10 @@ class ModelRouter:
             parsed_timeout = 55.0
         self.timeout_seconds = timeout_seconds if timeout_seconds and timeout_seconds > 0 else parsed_timeout
         self.max_attempts = max(1, int(max_attempts or MAX_ATTEMPTS))
-        self._fallback_chain = get_fallback_chain(self.model_id)
+        if fallback_chain_override is not None:
+            self._fallback_chain = [m for m in fallback_chain_override if m and m != self.model_id]
+        else:
+            self._fallback_chain = get_fallback_chain(self.model_id)
         self.on_attempt = on_attempt
 
     def _structured_log(self, event: str, **fields: Any) -> None:

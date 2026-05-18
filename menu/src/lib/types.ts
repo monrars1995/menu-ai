@@ -166,6 +166,9 @@ export interface GerarRequest {
   refeicoes?: string[];
   nome_cardapio?: string;
   llm_model?: string;
+  review_llm_model?: string;
+  review_enabled?: boolean;
+  review_strategy?: "consultive";
   contrato_analise_confirmada?: boolean;
   generation_mode?: "fast" | "full";
 }
@@ -182,6 +185,16 @@ export interface JobStatus {
   elapsed_seconds?: number | null;
   current_step?: string | null;
   timeout_budget_seconds?: number | null;
+  config?: Record<string, unknown> | null;
+  generator_model?: string | null;
+  generator_provider?: string | null;
+  review_model?: string | null;
+  review_provider?: string | null;
+  review_status?: string | null;
+  review_summary?: string | null;
+  review_warnings?: string[];
+  review_applied_fixes_count?: number;
+  degraded_generation?: boolean;
 }
 
 export interface PaginatedResponse<T> {
@@ -200,6 +213,8 @@ export interface LlmModel {
   slug?: string;
   description?: string;
   enabled?: boolean;
+  supports_generation?: boolean;
+  supports_review?: boolean;
 }
 
 export type Role = "super_admin" | "admin" | "nutricionista" | "gestor" | "visualizador";

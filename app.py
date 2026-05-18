@@ -1,6 +1,6 @@
 
 """
-Menu.AI — Backend FastAPI v3.6.18
+Menu.AI — Backend FastAPI v3.6.19
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
@@ -30,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.18"
+APP_VERSION = "3.6.21"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -179,6 +179,7 @@ def _status_payload(job_id: str, job_data: dict) -> dict:
         except Exception:
             elapsed_seconds = None
 
+    config = job_data.get("config") if isinstance(job_data.get("config"), dict) else {}
     return {
         "job_id": job_id,
         "status": job_data.get("status"),
@@ -191,7 +192,16 @@ def _status_payload(job_id: str, job_data: dict) -> dict:
         "elapsed_seconds": elapsed_seconds,
         "current_step": job_data.get("current_step"),
         "timeout_budget_seconds": job_data.get("timeout_budget_seconds"),
-        "config": job_data.get("config"),
+        "config": config,
+        "generator_model": job_data.get("generator_model") or config.get("generator_model_used"),
+        "generator_provider": job_data.get("generator_provider") or config.get("generator_provider_used"),
+        "review_model": job_data.get("review_model") or config.get("review_model_used"),
+        "review_provider": job_data.get("review_provider") or config.get("review_provider_used"),
+        "review_status": job_data.get("review_status") or config.get("review_status"),
+        "review_summary": job_data.get("review_summary") or config.get("review_summary"),
+        "review_warnings": job_data.get("review_warnings") or config.get("review_warnings") or [],
+        "review_applied_fixes_count": job_data.get("review_applied_fixes_count") or config.get("review_applied_fixes_count") or 0,
+        "degraded_generation": bool(job_data.get("degraded_generation") if job_data.get("degraded_generation") is not None else config.get("degraded_generation")),
     }
 
 
@@ -489,12 +499,16 @@ async def gerar_cardapio(
     body_resolved = body.model_copy(update={"empresa_id": eid})
 
     if _db_ok:
-        from pipeline.openrouter_models import assert_llm_model_allowed_for_generation
+        from pipeline.openrouter_models import (
+            assert_llm_model_allowed_for_generation,
+            assert_llm_model_allowed_for_review,
+        )
         from database.connection import SessionLocal
 
         db_chk = SessionLocal()
         try:
             assert_llm_model_allowed_for_generation(db_chk, body_resolved.llm_model)
+            assert_llm_model_allowed_for_review(db_chk, body_resolved.review_llm_model)
         finally:
             db_chk.close()
 
@@ -560,6 +574,9 @@ async def gerar_cardapio(
             body_resolved.contrato_id,
             body_resolved.nome_cardapio,
             body_resolved.llm_model,
+            body_resolved.review_llm_model,
+            body_resolved.review_enabled,
+            body_resolved.review_strategy,
             body_resolved.generation_mode,
             upload_dir=UPLOAD_DIR,
             db_ok=_db_ok,
@@ -595,6 +612,9 @@ async def gerar_cardapio_com_upload(
     restricoes_usuario: str = Form(""),
     nome_cardapio: Optional[str] = Form(None),
     llm_model: Optional[str] = Form(None),
+    review_llm_model: Optional[str] = Form(None),
+    review_enabled: bool = Form(True),
+    review_strategy: str = Form("consultive"),
     usuario: Optional[Usuario] = Depends(get_usuario_geracao),
 ):
     """Upload/cadastro de contrato para o fluxo assistido.
@@ -710,6 +730,9 @@ async def gerar_cardapio_com_upload(
         "filename": file.filename,
         "tipo": ext[1:],
         "tamanho_kb": round(len(content) / 1024, 1),
+        "review_llm_model": review_llm_model,
+        "review_enabled": review_enabled,
+        "review_strategy": review_strategy,
     }
 
 
@@ -725,7 +748,21 @@ async def stream_job(request: Request, job_id: str, usuario: Optional[Usuario] =
         async def once():
             r = j.get("result", "")
             yield f"data: {json.dumps({'type': 'log', 'message': 'reidratação a partir do banco'})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'result': r, 'progress': 100})}\n\n"
+            payload = {
+                "type": "done",
+                "result": r,
+                "progress": 100,
+                "generator_model": j.get("generator_model") or (j.get("config") or {}).get("generator_model_used"),
+                "generator_provider": j.get("generator_provider") or (j.get("config") or {}).get("generator_provider_used"),
+                "review_model": j.get("review_model") or (j.get("config") or {}).get("review_model_used"),
+                "review_provider": j.get("review_provider") or (j.get("config") or {}).get("review_provider_used"),
+                "review_status": j.get("review_status") or (j.get("config") or {}).get("review_status"),
+                "review_summary": j.get("review_summary") or (j.get("config") or {}).get("review_summary"),
+                "review_warnings": j.get("review_warnings") or (j.get("config") or {}).get("review_warnings") or [],
+                "review_applied_fixes_count": j.get("review_applied_fixes_count") or (j.get("config") or {}).get("review_applied_fixes_count") or 0,
+                "degraded_generation": bool(j.get("degraded_generation") if j.get("degraded_generation") is not None else (j.get("config") or {}).get("degraded_generation")),
+            }
+            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
         return StreamingResponse(once(), media_type="text/event-stream")
     if j and j.get("status") == "erro":
         async def once_error():
@@ -850,7 +887,7 @@ async def confirmar_geracao(
     """
     from services.geracao import get_job_or_restore
 
-    j = get_job_or_restore(job_id)
+    j = get_job_or_restore(job_id, _db_ok)
     if not j:
         raise HTTPException(404, f"Job '{job_id}' não encontrado")
 

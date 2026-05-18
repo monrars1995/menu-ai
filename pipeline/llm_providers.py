@@ -34,6 +34,8 @@ class ModelEntry:
     model_string: str
     description: str = ""
     is_default: bool = False
+    supports_generation: bool = True
+    supports_review: bool = False
 
 
 @dataclass
@@ -160,6 +162,7 @@ _CATALOG: tuple[ModelEntry, ...] = (
         provider="openrouter",
         model_string="openrouter/qwen/qwen3.6-plus",
         description="Modelo Qwen via OpenRouter para geração de cardápio.",
+        supports_review=True,
     ),
     ModelEntry(
         id="glm-5-1",
@@ -167,6 +170,7 @@ _CATALOG: tuple[ModelEntry, ...] = (
         provider="openrouter",
         model_string="openrouter/z-ai/glm-5.1",
         description="Alternativa para raciocínio e custo via OpenRouter.",
+        supports_review=True,
     ),
     ModelEntry(
         id="kimi-k2.5",
@@ -174,6 +178,7 @@ _CATALOG: tuple[ModelEntry, ...] = (
         provider="openrouter",
         model_string="openrouter/moonshotai/kimi-k2.5",
         description="Compatibilidade legada via OpenRouter para tarefas longas e execução robusta.",
+        supports_review=True,
     ),
 )
 
@@ -258,6 +263,24 @@ def get_model_label(model_id: Optional[str]) -> str:
     return get_model_entry(model_id).label
 
 
+def is_generation_capable(model_id: Optional[str]) -> bool:
+    return bool(get_model_entry(model_id).supports_generation)
+
+
+def is_review_capable(model_id: Optional[str]) -> bool:
+    return bool(get_model_entry(model_id).supports_review)
+
+
+def get_review_model_ids() -> List[str]:
+    providers = get_enabled_providers()
+    return [e.id for e in _CATALOG if e.supports_review and e.provider in providers]
+
+
+def get_generation_model_ids() -> List[str]:
+    providers = get_enabled_providers()
+    return [e.id for e in _CATALOG if e.supports_generation and e.provider in providers]
+
+
 def resolve_model_config(model_id: Optional[str]) -> ResolvedModelConfig:
     entry = get_model_entry(model_id)
     provider_cfg = get_provider_config(entry.provider)
@@ -300,27 +323,51 @@ def get_fallback_chain(model_id: Optional[str]) -> List[str]:
     return out
 
 
+_REVIEW_FALLBACK_CHAIN: List[str] = ["queen-3.6", "glm-5-1", "kimi-k2.5"]
+
+
+def get_review_fallback_chain(model_id: Optional[str]) -> List[str]:
+    mid = (model_id or "").strip()
+    enabled = set(get_review_model_ids())
+    out: List[str] = []
+    if mid and mid in enabled:
+        out.append(mid)
+    for candidate in _REVIEW_FALLBACK_CHAIN:
+        if candidate in enabled and candidate not in out:
+            out.append(candidate)
+    return out
+
+
 def api_models_payload() -> dict:
     providers = get_enabled_providers()
     default_id = get_effective_default_model_id()
     models = []
+    generation_models = []
+    review_models = []
     for entry in _CATALOG:
         if entry.provider not in providers:
             continue
-        models.append(
-            {
-                "id": entry.id,
-                "label": entry.label,
-                "provider": entry.provider,
-                "model_string": entry.model_string,
-                "description": entry.description,
-            }
-        )
+        item = {
+            "id": entry.id,
+            "label": entry.label,
+            "provider": entry.provider,
+            "model_string": entry.model_string,
+            "description": entry.description,
+            "supports_generation": entry.supports_generation,
+            "supports_review": entry.supports_review,
+        }
+        models.append(item)
+        if entry.supports_generation:
+            generation_models.append(dict(item))
+        if entry.supports_review:
+            review_models.append(dict(item))
     return {
         "default": default_id,
         "default_provider": get_model_provider(default_id) if default_id in _ID_TO_ENTRY else "",
         "providers": list(providers.keys()),
         "models": models,
+        "generation_models": generation_models,
+        "review_models": review_models,
     }
 
 

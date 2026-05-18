@@ -34,6 +34,7 @@ export default function GerarPage() {
     confirmHitl,
     sendChatMessage,
     setLlmModel,
+    setReviewLlmModel,
   } = useChatGenerator();
 
   const hasChatInput =
@@ -57,9 +58,12 @@ export default function GerarPage() {
       topBar={(
         <GerarTopBar
           llmModel={state.llmModel}
-          llmModels={state.llmModels}
+          generationModels={state.generationModels}
+          reviewLlmModel={state.reviewLlmModel}
+          reviewModels={state.reviewModels}
           loadingModels={state.loadingLlmModels}
           onChangeModel={setLlmModel}
+          onChangeReviewModel={setReviewLlmModel}
         />
       )}
       input={hasChatInput ? (

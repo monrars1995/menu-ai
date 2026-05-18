@@ -71,6 +71,7 @@ COMPACT_KEY_TO_COLUMN = {
     "fr": "Fruta",
     "tm": "Tema Especial",
 }
+COLUMN_TO_COMPACT_KEY = {value: key for key, value in COMPACT_KEY_TO_COLUMN.items()}
 
 SLOT_BUCKETS = {
     "Pão": "paes",
@@ -167,6 +168,19 @@ class Candidate:
     vegana: bool
     gluten: bool
     lactose: bool
+
+
+@dataclass
+class ReviewOutcome:
+    status: str
+    summary: str
+    warnings: list[str]
+    findings: list[dict[str, Any]]
+    applied_fixes_count: int
+    model_id: Optional[str] = None
+    model_used: Optional[str] = None
+    provider_used: Optional[str] = None
+    duration_seconds: float = 0.0
 
 
 def _norm(text: Any) -> str:
@@ -668,6 +682,136 @@ def _llm_generate(
     }
 
 
+def _compact_row_for_review(row: dict[str, Any]) -> dict[str, Any]:
+    compact: dict[str, Any] = {}
+    for column in OUTPUT_COLUMNS:
+        value = _clean_cell(row.get(column))
+        if column == "Dia":
+            compact["d"] = int(str(value or "0").replace("*", "").strip() or 0)
+            continue
+        if column == "Refeição":
+            compact["r"] = value
+            continue
+        if column in PERCENT_COLUMNS and value != "-":
+            compact[column] = value
+            continue
+        short_key = COLUMN_TO_COMPACT_KEY.get(column)
+        if short_key and value != "-":
+            compact[short_key] = value
+    return compact
+
+
+def _sanitize_review_issue(issue: Any) -> dict[str, Any]:
+    if isinstance(issue, str):
+        return {"severity": "warning", "message": issue.strip()}
+    if not isinstance(issue, dict):
+        return {"severity": "warning", "message": _clean_cell(issue)}
+    return {
+        "severity": _clean_cell(issue.get("severity") or "warning").lower(),
+        "type": _clean_cell(issue.get("type") or issue.get("issue_type") or "-"),
+        "message": _clean_cell(issue.get("message") or issue.get("descricao") or issue.get("issue") or "-"),
+        "day": issue.get("day") or issue.get("dia"),
+        "meal": _clean_cell(issue.get("meal") or issue.get("refeicao") or "-"),
+        "column": _clean_cell(issue.get("column") or issue.get("slot") or "-"),
+        "current_value": _clean_cell(issue.get("current_value") or issue.get("valor_atual") or "-"),
+        "suggested_value": _clean_cell(issue.get("suggested_value") or issue.get("valor_sugerido") or "-"),
+    }
+
+
+def _count_row_changes(base_rows: list[dict[str, Any]], reviewed_rows: list[dict[str, Any]]) -> int:
+    changes = 0
+    for before, after in zip(base_rows, reviewed_rows, strict=False):
+        for column in OUTPUT_COLUMNS:
+            if _clean_cell(before.get(column)) != _clean_cell(after.get(column)):
+                changes += 1
+    return changes
+
+
+def _normalize_review_warnings(values: Any) -> list[str]:
+    if not values:
+        return []
+    if isinstance(values, list):
+        return [_clean_cell(v) for v in values if _clean_cell(v) and _clean_cell(v) != "-"]
+    if isinstance(values, str):
+        value = _clean_cell(values)
+        return [value] if value and value != "-" else []
+    return []
+
+
+def _llm_review(
+    *,
+    job_id: str,
+    empresa_id: str,
+    review_llm_model: Optional[str],
+    generated_rows: list[dict[str, Any]],
+    dias: int,
+    refeicoes: list[str],
+    catalog: dict[str, list[Candidate]],
+    regras_contrato: dict[str, Any],
+    request_timeout_seconds: Optional[float] = None,
+    max_attempts: Optional[int] = None,
+    on_attempt: Optional[Callable[[dict[str, Any]], None]] = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    from pipeline.llm_providers import get_review_fallback_chain
+    from pipeline.model_router import ModelRouter
+
+    selected_review_model = (review_llm_model or "queen-3.6").strip() or "queen-3.6"
+    prompt_catalog = _catalog_for_prompt(catalog, limit=min(_resolve_prompt_catalog_limit(dias, refeicoes), 18))
+    contract_rules_prompt = _compact_contract_rules_for_prompt(regras_contrato or {}, 1500)
+    compact_rows = [_compact_row_for_review(row) for row in generated_rows]
+    system = (
+        "Você é um revisor técnico de cardápios operacionais. "
+        "Revise o JSON gerado e responda APENAS JSON válido. "
+        "Nunca invente pratos fora do catálogo permitido. "
+        "Só aplique reviewed_rows quando a correção for segura e continuar usando itens do catálogo."
+    )
+    user = (
+        f"Revise um cardápio de {dias} dias para as refeições "
+        f"{', '.join(REFEICAO_LABELS.get(r, r) for r in refeicoes)}.\n"
+        f"Regras do contrato:\n{contract_rules_prompt}\n"
+        f"Catálogo permitido (amostra):\n{json.dumps(prompt_catalog, ensure_ascii=False)[:6500]}\n"
+        f"Cardápio gerado para revisão:\n{json.dumps(compact_rows, ensure_ascii=False)[:14000]}\n\n"
+        "Responda exatamente neste JSON:\n"
+        "{\n"
+        '  "verdict": "approved|approved_with_fixes|rejected",\n'
+        '  "summary": "resumo curto da revisão",\n'
+        '  "issues": [\n'
+        '    {"severity":"warning|error","type":"repetition|contract|catalog|structure|cost","message":"...","day":1,"meal":"Almoço","column":"Prato Proteico Principal","current_value":"...","suggested_value":"..."}\n'
+        "  ],\n"
+        '  "safe_fixes": ["descrição curta da correção aplicada"],\n'
+        '  "review_warnings": ["avisos curtos opcionais"],\n'
+        '  "reviewed_rows": [/* linhas compactas corrigidas apenas se houver correções seguras */]\n'
+        "}\n\n"
+        "Se o cardápio estiver consistente, devolva reviewed_rows vazio."
+    )
+    router = ModelRouter(
+        model_id=selected_review_model,
+        job_id=job_id,
+        empresa_id=empresa_id,
+        step_label="Revisor de cardápio",
+        step_index=12,
+        timeout_seconds=request_timeout_seconds,
+        max_attempts=max_attempts,
+        fallback_chain_override=get_review_fallback_chain(selected_review_model),
+        on_attempt=on_attempt,
+    )
+    result = router.call(
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=0.1,
+    )
+    if not result.success:
+        raise RuntimeError(result.error or "Falha ao chamar revisor LLM.")
+    content = _message_content(result.response)
+    payload = _extract_json(content)
+    return payload, {
+        "model_id": result.model_id,
+        "model_used": result.model_used,
+        "provider_used": result.provider_used,
+        "attempts": result.attempts,
+        "fallback_used": result.is_fallback,
+    }
+
+
 def _deterministic_rows(catalog: dict[str, list[Candidate]], dias: int, refeicoes: list[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for dia in range(1, dias + 1):
@@ -854,9 +998,19 @@ def _persist_cardapio(
     warnings: list[str],
     duration_seconds: float,
     attempts: int,
-    model_used: Optional[str],
-    provider_used: Optional[str],
+    generator_model_used: Optional[str],
+    generator_provider_used: Optional[str],
     timeout_reason: Optional[str],
+    review_status: Optional[str] = None,
+    review_summary: Optional[str] = None,
+    review_warnings: Optional[list[str]] = None,
+    review_findings: Optional[list[dict[str, Any]]] = None,
+    review_applied_fixes_count: int = 0,
+    review_model_id: Optional[str] = None,
+    review_model_used: Optional[str] = None,
+    review_provider_used: Optional[str] = None,
+    review_duration_seconds: Optional[float] = None,
+    degraded_generation: bool = False,
     prompt_chars: Optional[int] = None,
     prompt_catalog_limit: Optional[int] = None,
 ) -> str:
@@ -880,12 +1034,25 @@ def _persist_cardapio(
             "generation_mode": "fast",
             "duration_seconds": round(duration_seconds, 2),
             "attempts": attempts,
-            "model_used": model_used or llm_model,
-            "provider_used": provider_used,
+            "model_used": generator_model_used or llm_model,
+            "provider_used": generator_provider_used,
+            "generator_model_used": generator_model_used or llm_model,
+            "generator_provider_used": generator_provider_used,
             "timeout_reason": timeout_reason,
             "prompt_chars": prompt_chars,
             "prompt_catalog_limit": prompt_catalog_limit,
             "validation_warnings": warnings[:100],
+            "review_status": review_status,
+            "review_summary": review_summary,
+            "review_warnings": (review_warnings or [])[:50],
+            "review_findings": (review_findings or [])[:100],
+            "review_applied_fixes_count": review_applied_fixes_count,
+            "review_model_id": review_model_id,
+            "review_model_used": review_model_used,
+            "review_provider_used": review_provider_used,
+            "review_duration_seconds": review_duration_seconds,
+            "review_findings_count": len(review_findings or []),
+            "degraded_generation": degraded_generation,
         },
         updated_at=datetime.utcnow(),
     )
@@ -943,11 +1110,24 @@ def _persist_cardapio(
             {
                 "duration_seconds": round(duration_seconds, 2),
                 "attempts": attempts,
-                "model_used": model_used or llm_model,
-                "provider_used": provider_used,
+                "model_used": generator_model_used or llm_model,
+                "provider_used": generator_provider_used,
+                "generator_model_used": generator_model_used or llm_model,
+                "generator_provider_used": generator_provider_used,
                 "timeout_reason": timeout_reason,
                 "prompt_chars": prompt_chars,
                 "prompt_catalog_limit": prompt_catalog_limit,
+                "review_status": review_status,
+                "review_summary": review_summary,
+                "review_warnings": (review_warnings or [])[:50],
+                "review_findings": (review_findings or [])[:100],
+                "review_applied_fixes_count": review_applied_fixes_count,
+                "review_model_id": review_model_id,
+                "review_model_used": review_model_used,
+                "review_provider_used": review_provider_used,
+                "review_duration_seconds": review_duration_seconds,
+                "review_findings_count": len(review_findings or []),
+                "degraded_generation": degraded_generation,
             }
         )
         job_db.parametros_json = params
@@ -971,6 +1151,9 @@ def run_fast_generation(
     contrato_id: Optional[str],
     nome_cardapio: Optional[str],
     llm_model: Optional[str],
+    review_llm_model: Optional[str],
+    review_enabled: bool,
+    review_strategy: str,
     regras_contrato: dict[str, Any],
     started_ts: float,
     progress: Callable[[int, str, str], None],
@@ -1055,6 +1238,14 @@ def run_fast_generation(
         llm_prompt_chars: Optional[int] = None
         llm_prompt_catalog_limit: Optional[int] = None
         timeout_reason: Optional[str] = None
+        degraded_generation = False
+        review_outcome = ReviewOutcome(
+            status="not_requested" if not review_enabled else "pending",
+            summary="",
+            warnings=[],
+            findings=[],
+            applied_fixes_count=0,
+        )
         def on_llm_attempt(meta: dict[str, Any]) -> None:
             event = str(meta.get("event") or "")
             attempt = int(meta.get("attempt") or 0)
@@ -1099,6 +1290,7 @@ def run_fast_generation(
             llm_prompt_catalog_limit = int(call_meta.get("prompt_catalog_limit") or 0) or llm_prompt_catalog_limit
         except Exception as exc:
             logger.warning("Falha na geração LLM inicial do modo fast: %s", exc)
+            degraded_generation = True
             warnings.append(
                 "Geração LLM inicial falhou; usada rotação determinística. "
                 f"Motivo: {_summarize_llm_failure(exc)}"
@@ -1165,6 +1357,88 @@ def run_fast_generation(
             except Exception as exc:
                 warnings.append(f"Reparo LLM falhou; mantida versão normalizada. Erro: {exc}")
 
+        if degraded_generation:
+            review_outcome = ReviewOutcome(
+                status="draft_degraded",
+                summary="Cardápio gerado em modo degradado após fallback determinístico; revisão LLM consultiva não aplicada.",
+                warnings=[
+                    "Resultado marcado como draft degradado porque o gerador LLM falhou e o sistema usou rotação determinística."
+                ],
+                findings=[],
+                applied_fixes_count=0,
+            )
+        elif review_enabled:
+            ensure_budget("review", reserve_seconds=5)
+            progress(86, "🧪 Revisando consistência com modelo revisor OpenRouter...", "Revisor")
+            review_started_at = time.time()
+            try:
+                timeout_for_review = min(
+                    per_call_timeout,
+                    max(20.0, remaining_budget_seconds() - 5.0),
+                )
+                touch_job("Iniciando revisão consultiva do cardápio")
+                review_payload, review_meta = _llm_review(
+                    job_id=job_id,
+                    empresa_id=empresa_id,
+                    review_llm_model=review_llm_model,
+                    generated_rows=normalized,
+                    dias=dias,
+                    refeicoes=refeicoes_norm,
+                    catalog=catalog,
+                    regras_contrato=regras_contrato or {},
+                    request_timeout_seconds=timeout_for_review,
+                    max_attempts=max_attempts,
+                    on_attempt=on_llm_attempt,
+                )
+                review_verdict = _clean_cell(review_payload.get("verdict") or "approved").lower()
+                review_summary = _clean_cell(review_payload.get("summary") or "Revisão concluída.")
+                review_findings = [
+                    _sanitize_review_issue(issue)
+                    for issue in (review_payload.get("issues") or [])
+                ]
+                safe_fixes = _normalize_review_warnings(review_payload.get("safe_fixes"))
+                review_warnings = _normalize_review_warnings(review_payload.get("review_warnings"))
+                reviewed_rows_payload = review_payload.get("reviewed_rows") or []
+                applied_fix_count = 0
+                if isinstance(reviewed_rows_payload, list) and reviewed_rows_payload:
+                    reviewed_rows = _rows_from_payload({"rows": reviewed_rows_payload})
+                    reviewed_rows, reviewed_validation_warnings = _validate_and_normalize(
+                        reviewed_rows,
+                        dias=dias,
+                        refeicoes=refeicoes_norm,
+                        catalog=catalog,
+                    )
+                    candidate_changes = _count_row_changes(normalized, reviewed_rows)
+                    if candidate_changes > 0:
+                        normalized = reviewed_rows
+                        applied_fix_count = candidate_changes
+                        if safe_fixes:
+                            warnings.extend([f"Revisor aplicou ajuste seguro: {item}" for item in safe_fixes])
+                        warnings.extend(
+                            [f"Revisor reaplicou validação: {item}" for item in reviewed_validation_warnings]
+                        )
+                review_outcome = ReviewOutcome(
+                    status=review_verdict or "approved",
+                    summary=review_summary,
+                    warnings=review_warnings + safe_fixes,
+                    findings=review_findings,
+                    applied_fixes_count=applied_fix_count,
+                    model_id=str(review_meta.get("model_id") or review_llm_model or ""),
+                    model_used=str(review_meta.get("model_used") or review_llm_model or ""),
+                    provider_used=str(review_meta.get("provider_used") or ""),
+                    duration_seconds=round(time.time() - review_started_at, 2),
+                )
+            except Exception as exc:
+                review_outcome = ReviewOutcome(
+                    status="review_failed",
+                    summary="Revisor LLM indisponível; resultado segue sem revisão consultiva.",
+                    warnings=[_summarize_llm_failure(exc)],
+                    findings=[],
+                    applied_fixes_count=0,
+                    model_id=review_llm_model,
+                    duration_seconds=round(time.time() - review_started_at, 2),
+                )
+
         ensure_budget("persist", reserve_seconds=0)
         progress(90, "💾 Persistindo cardápio estruturado...", "Sistema")
         markdown = _markdown_table(normalized)
@@ -1185,9 +1459,19 @@ def run_fast_generation(
             warnings=warnings,
             duration_seconds=duration_seconds,
             attempts=llm_attempts_total,
-            model_used=llm_model_used,
-            provider_used=llm_provider_used,
+            generator_model_used=llm_model_used,
+            generator_provider_used=llm_provider_used,
             timeout_reason=timeout_reason,
+            review_status=review_outcome.status,
+            review_summary=review_outcome.summary,
+            review_warnings=review_outcome.warnings,
+            review_findings=review_outcome.findings,
+            review_applied_fixes_count=review_outcome.applied_fixes_count,
+            review_model_id=review_outcome.model_id,
+            review_model_used=review_outcome.model_used,
+            review_provider_used=review_outcome.provider_used,
+            review_duration_seconds=review_outcome.duration_seconds,
+            degraded_generation=degraded_generation,
             prompt_chars=llm_prompt_chars,
             prompt_catalog_limit=llm_prompt_catalog_limit,
         )
@@ -1200,8 +1484,14 @@ def run_fast_generation(
                     "cardapio_id": cardapio_id,
                     "duration_seconds": round(duration_seconds, 2),
                     "attempts": llm_attempts_total,
-                    "model_used": llm_model_used or llm_model,
-                    "provider_used": llm_provider_used,
+                    "generator_model_used": llm_model_used or llm_model,
+                    "generator_provider_used": llm_provider_used,
+                    "review_model_used": review_outcome.model_used,
+                    "review_provider_used": review_outcome.provider_used,
+                    "review_status": review_outcome.status,
+                    "review_findings_count": len(review_outcome.findings),
+                    "review_applied_fixes_count": review_outcome.applied_fixes_count,
+                    "degraded_generation": degraded_generation,
                     "prompt_chars": llm_prompt_chars,
                     "prompt_catalog_limit": llm_prompt_catalog_limit,
                     "warnings_count": len(warnings),
@@ -1218,6 +1508,16 @@ def run_fast_generation(
             "attempts": llm_attempts_total,
             "model_used": llm_model_used or llm_model,
             "provider_used": llm_provider_used,
+            "generator_model_used": llm_model_used or llm_model,
+            "generator_provider_used": llm_provider_used,
+            "review_model_used": review_outcome.model_used,
+            "review_provider_used": review_outcome.provider_used,
+            "review_status": review_outcome.status,
+            "review_summary": review_outcome.summary,
+            "review_warnings": review_outcome.warnings,
+            "review_findings": review_outcome.findings,
+            "review_applied_fixes_count": review_outcome.applied_fixes_count,
+            "degraded_generation": degraded_generation,
             "prompt_chars": llm_prompt_chars,
             "prompt_catalog_limit": llm_prompt_catalog_limit,
         }

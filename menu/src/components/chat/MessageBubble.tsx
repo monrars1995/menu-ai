@@ -439,10 +439,16 @@ function ConfirmCard({
             {data.custoAlvo ? `R$ ${data.custoAlvo}/dia` : "Nao definido"}
           </p>
         </div>
-        {data.modeloLabel && (
+        {data.generatorModelLabel && (
           <div className="rounded-lg bg-white/10 p-3">
-            <span className="text-white/50">Modelo IA:</span>
-            <p className="mt-0.5 font-medium text-white">{data.modeloLabel}</p>
+            <span className="text-white/50">Modelo gerador:</span>
+            <p className="mt-0.5 font-medium text-white">{data.generatorModelLabel}</p>
+          </div>
+        )}
+        {data.reviewModelLabel && (
+          <div className="rounded-lg bg-white/10 p-3">
+            <span className="text-white/50">Modelo revisor:</span>
+            <p className="mt-0.5 font-medium text-white">{data.reviewModelLabel}</p>
           </div>
         )}
       </div>
@@ -511,6 +517,17 @@ function ResultCard({
   };
   const isApproved = data.status === "aprovado" || data.status === "publicado";
   const preview = data.preview || [];
+  const reviewStatusLabel: Record<string, string> = {
+    reviewed: "Revisado",
+    approved: "Revisado",
+    approved_with_fixes: "Revisado com ajustes",
+    review_failed: "Sem revisão LLM",
+    rejected: "Revisão reprovou",
+    draft_degraded: "Draft degradado",
+  };
+  const statusLabel = data.degradedGeneration
+    ? "Draft degradado"
+    : reviewStatusLabel[String(data.reviewStatus || "")] || "Sem revisão LLM";
 
   return (
     <div className="w-full rounded-xl border border-hairline bg-white p-5 shadow-sm shadow-black/[0.03] space-y-4">
@@ -528,12 +545,38 @@ function ResultCard({
         <span
           className={cn(
             "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium",
-            isApproved ? "bg-success/10 text-success" : "bg-amber-100 text-amber-800"
+            isApproved
+              ? "bg-success/10 text-success"
+              : data.degradedGeneration
+              ? "bg-red-100 text-red-700"
+              : "bg-amber-100 text-amber-800"
           )}
         >
           {isApproved ? "Aprovado" : "Aguardando revisão"}
         </span>
       </div>
+
+      <div className="grid gap-2 md:grid-cols-3">
+        <div className="rounded-lg border border-hairline bg-surface-soft/50 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted-48">Gerado por</p>
+          <p className="mt-1 text-sm font-medium text-ink">{data.generatorModelLabel || "Nao informado"}</p>
+        </div>
+        <div className="rounded-lg border border-hairline bg-surface-soft/50 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted-48">Revisado por</p>
+          <p className="mt-1 text-sm font-medium text-ink">{data.reviewModelLabel || "Sem revisão LLM"}</p>
+        </div>
+        <div className="rounded-lg border border-hairline bg-surface-soft/50 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted-48">Status da revisão</p>
+          <p className="mt-1 text-sm font-medium text-ink">{statusLabel}</p>
+        </div>
+      </div>
+
+      {data.reviewSummary && (
+        <div className="rounded-lg border border-hairline bg-surface-soft/40 px-3 py-2">
+          <p className="text-xs font-medium text-ink">Resumo da revisão</p>
+          <p className="mt-1 text-xs leading-relaxed text-ink-muted-80">{data.reviewSummary}</p>
+        </div>
+      )}
 
       {preview.length > 0 && (
         <div className="rounded-lg border border-hairline bg-surface-soft/60">
@@ -587,7 +630,61 @@ function ResultCard({
         </div>
       )}
 
+      {data.reviewWarnings && data.reviewWarnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-xs font-medium text-amber-900">Warnings de revisão</p>
+          <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-amber-800">
+            {data.reviewWarnings.map((warning, index) => (
+              <li key={index}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.reviewFindings && data.reviewFindings.length > 0 && (
+        <div className="rounded-lg border border-hairline bg-surface-soft/60 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-ink">Achados do revisor</p>
+            <span className="text-[11px] text-ink-muted-48">
+              {data.reviewAppliedFixesCount || 0} ajuste(s) aplicado(s)
+            </span>
+          </div>
+          <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-ink-muted-80">
+            {data.reviewFindings.slice(0, 8).map((finding, index) => (
+              <li key={`${finding.code || "finding"}-${index}`} className="rounded-md bg-white/80 px-2.5 py-2">
+                <span className="font-medium text-ink">
+                  {finding.row ? `Dia ${finding.row}` : "Geral"}
+                  {finding.severity ? ` • ${finding.severity}` : ""}
+                  {finding.code ? ` • ${finding.code}` : ""}
+                </span>
+                <p className="mt-0.5">{finding.message}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.degradedGeneration && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <p className="text-xs font-medium text-red-900">Resultado degradado</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-red-800">
+            O gerador LLM falhou e o sistema montou um draft determinístico. Revise com cuidado. O caminho recomendado aqui é gerar novamente, trocar o modelo ou reduzir dias.
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
+        <button
+          onClick={onRegenerate}
+          className={cn(
+            "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2",
+            data.degradedGeneration
+              ? "bg-primary text-white hover:bg-primary-active"
+              : "border border-hairline bg-white text-ink hover:bg-surface-soft"
+          )}
+        >
+          <RefreshCw size={12} /> {data.degradedGeneration ? "Gerar novamente" : "Revisar novamente"}
+        </button>
         <button
           onClick={() => onApproveResult?.(data.cardapioId)}
           disabled={!data.cardapioId || isApproved}
@@ -595,16 +692,12 @@ function ResultCard({
             "flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2",
             isApproved
               ? "cursor-default bg-success/10 text-success"
+              : data.degradedGeneration
+              ? "border border-hairline bg-white text-ink hover:bg-surface-soft"
               : "bg-primary text-white hover:bg-primary-active"
           )}
         >
-          <CheckCircle2 size={12} /> {isApproved ? "Aprovado" : "Aprovar cardápio"}
-        </button>
-        <button
-          onClick={onRegenerate}
-          className="flex items-center gap-1.5 rounded-lg border border-hairline bg-white px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-surface-soft"
-        >
-          <RefreshCw size={12} /> Gerar novamente
+          <CheckCircle2 size={12} /> {isApproved ? "Aprovado" : data.degradedGeneration ? "Aprovar draft" : "Aprovar cardápio"}
         </button>
       </div>
 

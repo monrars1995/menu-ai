@@ -443,6 +443,7 @@ LlmModelId = Literal[
 ]
 
 GenerationMode = Literal["fast", "full"]
+ReviewStrategy = Literal["consultive"]
 
 
 class GerarCardapioRequest(BaseModel):
@@ -472,6 +473,18 @@ class GerarCardapioRequest(BaseModel):
     generation_mode: Optional[GenerationMode] = Field(
         default=None,
         description="Modo de geração: fast (padrão) ou full (pipeline completo legado).",
+    )
+    review_llm_model: Optional[LlmModelId] = Field(
+        default=None,
+        description="Modelo revisor para double check. Nesta fase, apenas modelos OpenRouter são aceitos.",
+    )
+    review_enabled: bool = Field(
+        default=True,
+        description="Ativa revisão consultiva por modelo revisor no modo fast.",
+    )
+    review_strategy: ReviewStrategy = Field(
+        default="consultive",
+        description='Estratégia de revisão do reviewer. Apenas "consultive" é suportada nesta fase.',
     )
 
 
@@ -557,3 +570,12 @@ class SessaoChatDetalhada(SessaoChatOut):
 class NovaMensagemRequest(BaseModel):
     content: str
     metadata_json: Optional[Dict[str, Any]] = None
+
+
+class CopilotTurnResponse(BaseModel):
+    assistant_message: str
+    tool_name: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    metadata_json: Optional[Dict[str, Any]] = None
+    context_updates: Optional[Dict[str, Any]] = None

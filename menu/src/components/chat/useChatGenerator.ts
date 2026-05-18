@@ -63,7 +63,15 @@ export interface ConfirmData {
   restricoesContrato?: string;
   restricoesAdicionais?: string;
   contratoNome: string;
-  modeloLabel?: string;
+  generatorModelLabel?: string;
+  reviewModelLabel?: string;
+}
+
+export interface ReviewFinding {
+  row?: number;
+  code?: string;
+  severity?: string;
+  message: string;
 }
 
 export interface ResultData {
@@ -75,6 +83,14 @@ export interface ResultData {
   status?: string;
   preview?: CardapioPreviewDay[];
   warnings?: string[];
+  generatorModelLabel?: string;
+  reviewModelLabel?: string;
+  reviewStatus?: string;
+  reviewSummary?: string;
+  reviewWarnings?: string[];
+  reviewFindings?: ReviewFinding[];
+  reviewAppliedFixesCount?: number;
+  degradedGeneration?: boolean;
 }
 
 export interface CardapioPreviewDay {
@@ -112,7 +128,10 @@ export interface ChatState {
   restricoes: string;
   confirmData: ConfirmData | null;
   llmModel: string;
+  reviewLlmModel: string;
   llmModels: LlmModel[];
+  generationModels: LlmModel[];
+  reviewModels: LlmModel[];
   loadingLlmModels: boolean;
   jobId: string | null;
   sessaoId: string | null;
@@ -124,6 +143,7 @@ export interface ChatState {
 
 const DEFAULT_REFEICOES = ["almoco", "jantar"];
 const LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
+const REVIEW_LLM_MODEL_STORAGE_KEY = "menuai_review_llm_model";
 const DEFAULT_TIMEOUT_BUDGET_SECONDS = 300;
 const STALE_SYNC_WARNING_MS = 45000;
 const STALE_SYNC_TIMEOUT_MS = 240000;
@@ -224,7 +244,10 @@ export function useChatGenerator() {
     restricoes: "",
     confirmData: null,
     llmModel: "",
+    reviewLlmModel: "",
     llmModels: [],
+    generationModels: [],
+    reviewModels: [],
     loadingLlmModels: true,
     jobId: null,
     sessaoId: null,
@@ -244,6 +267,15 @@ export function useChatGenerator() {
     if (didInitRef.current) return;
     didInitRef.current = true;
 
+    api.chat
+      .criarSessao()
+      .then((sessao) => {
+        setState((s) => ({ ...s, sessaoId: sessao.id }));
+      })
+      .catch(() => {
+        // Mantém fluxo sem bloquear a tela; a sessão também pode ser criada sob demanda.
+      });
+
     api.contratos
       .list()
       .then((r) => {
@@ -260,22 +292,43 @@ export function useChatGenerator() {
     api.llmModels()
       .then((payload) => {
         const models = (payload.models || []) as LlmModel[];
-        const defaultModel = models.length ? String(payload.default || models[0]?.id || "") : "";
+        const generationModels = ((payload.generation_models || []) as LlmModel[]).length
+          ? (payload.generation_models as LlmModel[])
+          : models.filter((model) => model.supports_generation !== false);
+        const reviewModels = ((payload.review_models || []) as LlmModel[]).length
+          ? (payload.review_models as LlmModel[])
+          : models.filter((model) => model.supports_review === true);
+        const defaultModel = generationModels.length ? String(payload.default || generationModels[0]?.id || "") : "";
+        const defaultReviewModel = reviewModels.length ? String(reviewModels[0]?.id || "") : "";
         const savedModel =
           typeof window !== "undefined"
             ? window.localStorage.getItem(LLM_MODEL_STORAGE_KEY)
             : null;
+        const savedReviewModel =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem(REVIEW_LLM_MODEL_STORAGE_KEY)
+            : null;
         const selected =
-          savedModel && models.some((m) => m.id === savedModel)
+          savedModel && generationModels.some((m) => m.id === savedModel)
             ? savedModel
             : defaultModel;
+        const selectedReviewer =
+          savedReviewModel && reviewModels.some((m) => m.id === savedReviewModel)
+            ? savedReviewModel
+            : defaultReviewModel;
         if (selected && typeof window !== "undefined") {
           window.localStorage.setItem(LLM_MODEL_STORAGE_KEY, selected);
+        }
+        if (selectedReviewer && typeof window !== "undefined") {
+          window.localStorage.setItem(REVIEW_LLM_MODEL_STORAGE_KEY, selectedReviewer);
         }
         setState((s) => ({
           ...s,
           llmModels: models,
+          generationModels,
+          reviewModels,
           llmModel: selected,
+          reviewLlmModel: selectedReviewer,
           loadingLlmModels: false,
         }));
       })
@@ -321,6 +374,15 @@ export function useChatGenerator() {
       return "O modelo selecionado recusou parâmetro de temperatura. Já aplicamos fallback automático; tente novamente.";
     }
     return raw;
+  }
+
+  function ensureChatSession(): Promise<string> {
+    const current = stateRef.current?.sessaoId;
+    if (current) return Promise.resolve(current);
+    return api.chat.criarSessao().then((sessao) => {
+      setState((prev) => ({ ...prev, sessaoId: sessao.id }));
+      return sessao.id as string;
+    });
   }
 
   function addAgentMessage(
@@ -583,8 +645,30 @@ export function useChatGenerator() {
     return Array.isArray(raw) ? raw.map((x) => String(x)).filter(Boolean).slice(0, 5) : [];
   }
 
+  function reviewFindings(cardapio: Cardapio): ReviewFinding[] {
+    const raw = cardapio.parametros_json?.review_findings;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const obj = item as Record<string, unknown>;
+        const message = String(obj.message || obj.summary || "").trim();
+        if (!message) return null;
+        return {
+          row: obj.row ? Number(obj.row) : undefined,
+          code: obj.code ? String(obj.code) : undefined,
+          severity: obj.severity ? String(obj.severity) : undefined,
+          message,
+        } satisfies ReviewFinding;
+      })
+      .filter(Boolean) as ReviewFinding[];
+  }
+
   function resultDataFromCardapio(jobId: string, cardapio: Cardapio): ResultData {
     const s = stateRef.current!;
+    const params = (cardapio.parametros_json || {}) as Record<string, unknown>;
+    const generatorModelId = String(params.generator_model_used || params.model_used || s.llmModel || "");
+    const reviewModelId = String(params.review_model_used || s.reviewLlmModel || "");
     return {
       jobId,
       cardapioId: cardapio.id,
@@ -594,6 +678,22 @@ export function useChatGenerator() {
       status: cardapio.status,
       preview: buildCardapioPreview(cardapio),
       warnings: validationWarnings(cardapio),
+      generatorModelLabel:
+        s.llmModels.find((model) => model.id === generatorModelId)?.label ||
+        generatorModelId ||
+        undefined,
+      reviewModelLabel:
+        s.llmModels.find((model) => model.id === reviewModelId)?.label ||
+        reviewModelId ||
+        undefined,
+      reviewStatus: params.review_status ? String(params.review_status) : undefined,
+      reviewSummary: params.review_summary ? String(params.review_summary) : undefined,
+      reviewWarnings: Array.isArray(params.review_warnings)
+        ? params.review_warnings.map((item) => String(item)).filter(Boolean)
+        : [],
+      reviewFindings: reviewFindings(cardapio),
+      reviewAppliedFixesCount: Number(params.review_applied_fixes_count || 0) || 0,
+      degradedGeneration: Boolean(params.degraded_generation),
     };
   }
 
@@ -649,6 +749,55 @@ export function useChatGenerator() {
           },
         });
       });
+  }
+
+  function applyCopilotContextUpdates(raw: unknown) {
+    if (!raw || typeof raw !== "object") return;
+    const updates = raw as Record<string, unknown>;
+    setState((prev) => ({
+      ...prev,
+      contratoId:
+        typeof updates.contrato_id === "string"
+          ? updates.contrato_id
+          : prev.contratoId,
+      cardapioId:
+        updates.cardapio_id === null
+          ? null
+          : typeof updates.cardapio_id === "string"
+          ? updates.cardapio_id
+          : prev.cardapioId,
+      jobId:
+        typeof updates.job_id === "string"
+          ? updates.job_id
+          : prev.jobId,
+    }));
+  }
+
+  function trackGenerationJob(jobId: string, skipContractAnalysis = false, bindSessionToJob = false) {
+    finalizedJobsRef.current[jobId] = false;
+    activeJobIdRef.current = jobId;
+    generationStartedAtRef.current = Date.now();
+    lastRealtimeUpdateRef.current = Date.now();
+    lastBackendProgressAtRef.current = Date.now();
+    lastStatusSignatureRef.current = "";
+    streamRetryCountRef.current[jobId] = 0;
+    startLiveHeartbeat(jobId);
+    setState((prev) => ({ ...prev, jobId, phase: "generating", loading: true }));
+
+    if (shouldUsePollingTransport()) {
+      pollJobStatus(jobId, skipContractAnalysis);
+    } else {
+      connectStream(jobId, skipContractAnalysis);
+      setTimeout(() => pollJobStatus(jobId, skipContractAnalysis), 1200);
+    }
+
+    if (bindSessionToJob) {
+      api.chat.criarSessao(jobId)
+        .then((sessao) => {
+          setState((prev) => ({ ...prev, sessaoId: sessao.id }));
+        })
+        .catch(console.error);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -800,6 +949,9 @@ export function useChatGenerator() {
         target_custo_total: s.custoAlvo ? parseFloat(s.custoAlvo) : undefined,
         restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
         llm_model: s.llmModel || undefined,
+        review_llm_model: s.reviewLlmModel || undefined,
+        review_enabled: true,
+        review_strategy: "consultive",
       }, (progress) => {
         updateMessage(uploadMsgId, () => ({
           uploadProgress: progress,
@@ -881,9 +1033,13 @@ export function useChatGenerator() {
         restricoesContrato: restricoesContrato || undefined,
         restricoesAdicionais: restricoesAdicionais || undefined,
         contratoNome,
-        modeloLabel:
+        generatorModelLabel:
           s.llmModels.find((m) => m.id === s.llmModel)?.label ||
           s.llmModel ||
+          undefined,
+        reviewModelLabel:
+          s.llmModels.find((m) => m.id === s.reviewLlmModel)?.label ||
+          s.reviewLlmModel ||
           undefined,
       };
       return { ...s, restricoes: value, phase: "confirm", confirmData };
@@ -941,6 +1097,9 @@ export function useChatGenerator() {
       restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
       refeicoes: s.refeicoes,
       llm_model: s.llmModel || undefined,
+      review_llm_model: s.reviewLlmModel || undefined,
+      review_enabled: true,
+      review_strategy: "consultive" as const,
       contrato_analise_confirmada: skipContractAnalysis,
       generation_mode: "fast",
     };
@@ -950,27 +1109,7 @@ export function useChatGenerator() {
       .start(data)
       .then((res) => {
         const jobId = res.job_id as string;
-        finalizedJobsRef.current[jobId] = false;
-        activeJobIdRef.current = jobId;
-        generationStartedAtRef.current = Date.now();
-        lastRealtimeUpdateRef.current = Date.now();
-        lastBackendProgressAtRef.current = Date.now();
-        lastStatusSignatureRef.current = "";
-        streamRetryCountRef.current[jobId] = 0;
-        startLiveHeartbeat(jobId);
-        setState((prev) => ({ ...prev, jobId }));
-        if (shouldUsePollingTransport()) {
-          pollJobStatus(jobId, skipContractAnalysis);
-        } else {
-          connectStream(jobId, skipContractAnalysis);
-          // Watchdog de status para não travar visualmente se o SSE cair em proxies/CDN.
-          setTimeout(() => pollJobStatus(jobId, skipContractAnalysis), 1200);
-        }
-
-        // Criar sessão de chat vinculada ao job
-        api.chat.criarSessao(jobId).then((sessao) => {
-          setState((prev) => ({ ...prev, sessaoId: sessao.id }));
-        }).catch(console.error);
+        trackGenerationJob(jobId, skipContractAnalysis, true);
       })
       .catch((e) => {
         const message = normalizeApiError(e, "Erro ao iniciar geracao.");
@@ -1279,9 +1418,9 @@ export function useChatGenerator() {
 
   function switchModelAfterTimeout() {
     const s = stateRef.current!;
-    if (!s.llmModels.length) return;
-    const currentIndex = Math.max(0, s.llmModels.findIndex((m) => m.id === s.llmModel));
-    const nextModel = s.llmModels[(currentIndex + 1) % s.llmModels.length];
+    if (!s.generationModels.length) return;
+    const currentIndex = Math.max(0, s.generationModels.findIndex((m) => m.id === s.llmModel));
+    const nextModel = s.generationModels[(currentIndex + 1) % s.generationModels.length];
     if (!nextModel?.id) return;
     setLlmModel(nextModel.id);
     addAgentMessage("text", `Modelo alterado para ${nextModel.label || nextModel.id}.`);
@@ -1331,6 +1470,14 @@ export function useChatGenerator() {
     setState((s) => ({ ...s, llmModel: modelId }));
   }
 
+  function setReviewLlmModel(modelId: string) {
+    if (!modelId) return;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(REVIEW_LLM_MODEL_STORAGE_KEY, modelId);
+    }
+    setState((s) => ({ ...s, reviewLlmModel: modelId }));
+  }
+
   function confirmHitl(confirm: boolean, ajustes?: string) {
     const s = stateRef.current!;
     if (!s.jobId) return;
@@ -1365,11 +1512,6 @@ export function useChatGenerator() {
     if (!cleanText) return;
     const s = stateRef.current!;
 
-    if (s.phase === "generating") {
-      addAgentMessage("text", "A geracao esta em andamento. Aguarde concluir para pedir ajustes.");
-      return;
-    }
-
     if (s.phase === "hitl-confirm") {
       const normalized = cleanText.toLowerCase();
       const noAdjustCommands = new Set([
@@ -1387,21 +1529,82 @@ export function useChatGenerator() {
       return;
     }
 
-    if (!s.sessaoId) {
-      addAgentMessage("error", "Sessão de chat não encontrada.");
-      return;
-    }
-
     addUserMessage(cleanText);
     setState((prev) => ({ ...prev, loading: true }));
 
-    api.chat.refinarAnalise(s.sessaoId, cleanText)
-      .then(() => {
+    ensureChatSession()
+      .then((sessaoId) =>
+        api.chat.copilot(sessaoId, cleanText, {
+          page_context: "gerar",
+          contrato_id: s.contratoId || undefined,
+          cardapio_id: s.cardapioId || undefined,
+          job_id: s.jobId || undefined,
+          llm_model: s.llmModel || undefined,
+          review_llm_model: s.reviewLlmModel || undefined,
+        }),
+      )
+      .then((response) => {
+        applyCopilotContextUpdates((response as any)?.context_updates);
+        const toolLabel = response?.tool_name ? `Tool: ${String(response.tool_name)}` : "";
+        const content =
+          String(response?.assistant_message || "").trim() ||
+          "Solicitação processada pelo copiloto.";
+        addAgentMessage("text", toolLabel ? `${content}\n\n${toolLabel}` : content);
+
+        const toolName = String((response as any)?.tool_name || "");
+        const toolResult = ((response as any)?.result && typeof (response as any).result === "object")
+          ? ((response as any).result as Record<string, unknown>)
+          : null;
+
+        if (
+          toolName === "gerar_novamente_cardapio" &&
+          toolResult &&
+          String(toolResult.status || "") === "started" &&
+          typeof toolResult.job_id === "string"
+        ) {
+          const jobId = toolResult.job_id;
+          const skipContractAnalysis = true;
+          const pipelineMsgId = addAgentMessage(
+            "pipeline",
+            "Gerando cardapio...",
+            { pipelineStep: 1, pipelineProgress: 0 }
+          );
+          activePipelineMessageIdRef.current = pipelineMsgId;
+          applyStaleThresholdFromBudget(Number(toolResult.timeout_budget_seconds || DEFAULT_TIMEOUT_BUDGET_SECONDS));
+          setState((prev) => ({
+            ...prev,
+            loading: true,
+            phase: "generating",
+            contratoId:
+              typeof toolResult.contrato_id === "string" ? toolResult.contrato_id : prev.contratoId,
+            cardapioId: null,
+          }));
+          trackGenerationJob(jobId, skipContractAnalysis, false);
+          return;
+        }
+
+        if (
+          toolName === "aprovar_cardapio" &&
+          toolResult?.cardapio &&
+          typeof toolResult.cardapio === "object"
+        ) {
+          const approvedCardapio = toolResult.cardapio as Record<string, unknown>;
+          const approvedId = typeof approvedCardapio.id === "string" ? approvedCardapio.id : "";
+          if (approvedId) {
+            setState((prev) => ({
+              ...prev,
+              messages: prev.messages.map((msg) =>
+                msg.resultData?.cardapioId === approvedId
+                  ? { ...msg, resultData: { ...msg.resultData, status: String(approvedCardapio.status || "aprovado") } }
+                  : msg
+              ),
+              loading: false,
+            }));
+            return;
+          }
+        }
+
         setState((prev) => ({ ...prev, loading: false }));
-        addAgentMessage(
-          "text",
-          "Entendi os ajustes. Eles serao considerados na proxima geracao."
-        );
       })
       .catch((e) => {
         const message = normalizeApiError(e, "Erro ao enviar mensagem.");
@@ -1431,6 +1634,7 @@ export function useChatGenerator() {
     reduceDaysAfterTimeout,
     approveGeneratedCardapio,
     setLlmModel,
+    setReviewLlmModel,
     confirmHitl,
     sendChatMessage,
   };

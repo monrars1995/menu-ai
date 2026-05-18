@@ -168,6 +168,9 @@ export const api = {
       restricoes_usuario?: string;
       nome_cardapio?: string;
       llm_model?: string;
+      review_llm_model?: string;
+      review_enabled?: boolean;
+      review_strategy?: "consultive";
     }, onProgress?: (progress: number) => void) => {
       return new Promise<any>((resolve, reject) => {
         const formData = new FormData();
@@ -178,6 +181,9 @@ export const api = {
         if (params.restricoes_usuario) formData.append("restricoes_usuario", params.restricoes_usuario);
         if (params.nome_cardapio) formData.append("nome_cardapio", params.nome_cardapio);
         if (params.llm_model) formData.append("llm_model", params.llm_model);
+        if (params.review_llm_model) formData.append("review_llm_model", params.review_llm_model);
+        if (typeof params.review_enabled === "boolean") formData.append("review_enabled", String(params.review_enabled));
+        if (params.review_strategy) formData.append("review_strategy", params.review_strategy);
 
         const xhr = new XMLHttpRequest();
         xhr.open("POST", `${API_BASE}/api/gerar/upload`);
@@ -216,6 +222,11 @@ export const api = {
       request(`/api/chat/${sessaoId}/refinar_analise`, {
         method: "POST",
         body: JSON.stringify({ content: mensagem }),
+      }),
+    copilot: (sessaoId: string, content: string, metadata_json?: Record<string, unknown>) =>
+      request(`/api/chat/${sessaoId}/copilot`, {
+        method: "POST",
+        body: JSON.stringify({ content, metadata_json }),
       }),
   },
 };
