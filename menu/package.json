@@ -1,11 +1,12 @@
 {
   "name": "menuai-menu",
-  "version": "3.6.5",
+  "version": "3.6.6",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack -p 8002",
     "build": "next build --webpack",
-    "start": "HOSTNAME=0.0.0.0 PORT=${PORT:-8002} node .next/standalone/server.js",
+    "prepare:standalone": "mkdir -p .next/standalone/.next .next/standalone/public && cp -R .next/static .next/standalone/.next/ && cp -R public/. .next/standalone/public/",
+    "start": "npm run prepare:standalone && HOSTNAME=0.0.0.0 PORT=${PORT:-8002} node .next/standalone/server.js",
     "lint": "next lint",
     "test:ui": "vitest run",
     "test:ui:watch": "vitest"
