@@ -420,6 +420,7 @@ def _llm_generate(
     repair_context: Optional[str] = None,
     request_timeout_seconds: Optional[float] = None,
     max_attempts: Optional[int] = None,
+    on_attempt: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
     from pipeline.model_router import ModelRouter
 
@@ -488,6 +489,7 @@ def _llm_generate(
         step_index=10 if not repair_context else 11,
         timeout_seconds=request_timeout_seconds,
         max_attempts=max_attempts,
+        on_attempt=on_attempt,
     )
     fast_temp_raw = (os.getenv("MENUAI_FAST_LLM_TEMPERATURE") or "0.25").strip()
     try:
@@ -806,6 +808,7 @@ def run_fast_generation(
         raise ValueError("empresa_id é obrigatório para geração rápida com fichas do banco.")
 
     from database.connection import SessionLocal
+    from services import job_state
 
     db = SessionLocal()
     try:
@@ -824,6 +827,15 @@ def run_fast_generation(
             max_attempts = max(1, int(max_attempts_raw))
         except ValueError:
             max_attempts = 3
+
+        def touch_job(step_hint: Optional[str] = None) -> None:
+            job = job_state.jobs.get(job_id)
+            if not job:
+                return
+            job["last_update_at"] = datetime.utcnow().isoformat()
+            job["last_update_ts"] = time.time()
+            if step_hint:
+                job["current_step"] = step_hint
 
         def remaining_budget_seconds() -> float:
             return budget_seconds - (time.time() - started_ts)
@@ -870,11 +882,20 @@ def run_fast_generation(
         llm_model_used: Optional[str] = None
         llm_provider_used: Optional[str] = None
         timeout_reason: Optional[str] = None
+        def on_llm_attempt(meta: dict[str, Any]) -> None:
+            attempt = int(meta.get("attempt") or 0)
+            max_att = int(meta.get("max_attempts") or max_attempts)
+            model_label = str(meta.get("model_id") or meta.get("model_string") or "modelo")
+            provider = str(meta.get("provider") or "")
+            provider_part = f" ({provider})" if provider else ""
+            touch_job(f"Tentativa LLM {attempt}/{max_att}: {model_label}{provider_part}")
+
         try:
             timeout_for_this_call = min(
                 per_call_timeout,
                 max(20.0, remaining_budget_seconds() - 12.0),
             )
+            touch_job("Iniciando chamada LLM para montar matriz operacional")
             rows, raw_response, call_meta = _llm_generate(
                 job_id=job_id,
                 empresa_id=empresa_id,
@@ -888,6 +909,7 @@ def run_fast_generation(
                 catalog=catalog,
                 request_timeout_seconds=timeout_for_this_call,
                 max_attempts=max_attempts,
+                on_attempt=on_llm_attempt,
             )
             llm_attempts_total += int(call_meta.get("attempts") or 0)
             llm_model_used = str(call_meta.get("model_used") or llm_model or "")
@@ -915,6 +937,7 @@ def run_fast_generation(
                     per_call_timeout,
                     max(20.0, remaining_budget_seconds() - 8.0),
                 )
+                touch_job("Iniciando chamada LLM de reparo")
                 repaired, _, repair_meta = _llm_generate(
                     job_id=job_id,
                     empresa_id=empresa_id,
@@ -932,6 +955,7 @@ def run_fast_generation(
                     )[:12000],
                     request_timeout_seconds=timeout_for_repair,
                     max_attempts=max_attempts,
+                    on_attempt=on_llm_attempt,
                 )
                 llm_attempts_total += int(repair_meta.get("attempts") or 0)
                 if not llm_model_used:

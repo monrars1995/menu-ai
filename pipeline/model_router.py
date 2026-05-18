@@ -17,7 +17,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from litellm import completion
 from litellm.exceptions import (
@@ -84,6 +84,7 @@ class ModelRouter:
         step_index: Optional[int] = None,
         timeout_seconds: Optional[float] = None,
         max_attempts: Optional[int] = None,
+        on_attempt: Optional[Callable[[dict[str, Any]], None]] = None,
     ):
         from pipeline.llm_providers import get_effective_default_model_id, get_fallback_chain
 
@@ -100,6 +101,7 @@ class ModelRouter:
         self.timeout_seconds = timeout_seconds if timeout_seconds and timeout_seconds > 0 else parsed_timeout
         self.max_attempts = max(1, int(max_attempts or MAX_ATTEMPTS))
         self._fallback_chain = get_fallback_chain(self.model_id)
+        self.on_attempt = on_attempt
 
     def _structured_log(self, event: str, **fields: Any) -> None:
         payload = {
@@ -245,6 +247,22 @@ class ModelRouter:
                 fallback=is_fallback,
                 timeout_seconds=self.timeout_seconds,
             )
+            if self.on_attempt:
+                try:
+                    self.on_attempt(
+                        {
+                            "event": "attempt_started",
+                            "attempt": attempt_idx + 1,
+                            "max_attempts": len(models_to_try),
+                            "model_id": mid,
+                            "model_string": cfg.model_string,
+                            "provider": cfg.provider,
+                            "fallback": is_fallback,
+                            "timeout_seconds": self.timeout_seconds,
+                        }
+                    )
+                except Exception:
+                    pass
 
             try:
                 try:

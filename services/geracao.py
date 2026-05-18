@@ -181,6 +181,23 @@ def executar_crew(
         stuck_threshold_seconds = max(30.0, float(stuck_threshold_raw))
     except ValueError:
         stuck_threshold_seconds = 90.0
+    generation_mode_effective = (generation_mode or os.getenv("MENUAI_GENERATION_MODE", "fast") or "fast").strip().lower()
+    if generation_mode_effective == "fast":
+        fast_attempt_timeout_raw = (os.getenv("MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS") or "55").strip()
+        fast_max_attempts_raw = (os.getenv("MENUAI_FAST_LLM_MAX_ATTEMPTS") or "3").strip()
+        try:
+            fast_attempt_timeout = max(20.0, float(fast_attempt_timeout_raw))
+        except ValueError:
+            fast_attempt_timeout = 55.0
+        try:
+            fast_max_attempts = max(1, int(fast_max_attempts_raw))
+        except ValueError:
+            fast_max_attempts = 3
+        # Evita falso positivo do watchdog durante chamadas LLM longas com fallback.
+        stuck_threshold_seconds = max(
+            stuck_threshold_seconds,
+            (fast_attempt_timeout * fast_max_attempts) + 25.0,
+        )
 
     watchdog_stop = threading.Event()
 
@@ -303,10 +320,11 @@ def executar_crew(
         _log_job_event(
             job_id,
             "job_worker_started",
-            generation_mode=(generation_mode or os.getenv("MENUAI_GENERATION_MODE", "fast")),
+            generation_mode=generation_mode_effective,
             llm_model=llm_model,
             contrato_id=contrato_id,
             empresa_id=empresa_id,
+            stuck_threshold_seconds=stuck_threshold_seconds,
         )
         watchdog_thread.start()
         progress(5, "🚀 Iniciando enxame de agentes...", "Sistema", "inicialização do worker")
