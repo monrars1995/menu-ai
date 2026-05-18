@@ -173,9 +173,15 @@ export interface GerarRequest {
 export interface JobStatus {
   job_id: string;
   status: string;
-  progresso: number;
-  erro?: string;
-  resultado?: Record<string, unknown>;
+  progress: number;
+  error?: string;
+  error_type?: string;
+  timeout_reason?: string;
+  result?: Record<string, unknown> | string | null;
+  last_update_at?: string | null;
+  elapsed_seconds?: number | null;
+  current_step?: string | null;
+  timeout_budget_seconds?: number | null;
 }
 
 export interface PaginatedResponse<T> {

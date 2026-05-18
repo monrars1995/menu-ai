@@ -6,9 +6,11 @@ Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 import io
 import asyncio
 import json
+import logging
 import os
 import queue
 import re
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -28,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.7"
+APP_VERSION = "3.6.8"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -56,6 +58,18 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
+
+
+class _SkipHealthcheckAccessLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        return "/api/health" not in msg
+
+
+logging.getLogger("uvicorn.access").addFilter(_SkipHealthcheckAccessLogFilter())
 limiter = Limiter(key_func=get_remote_address, default_limits=[])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -149,6 +163,35 @@ _bearer_ger = HTTPBearer(auto_error=False)
 
 _SUPABASE_VALIDATION_URL = os.getenv("SUPABASE_URL", "")
 _SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+
+def _status_payload(job_id: str, job_data: dict) -> dict:
+    started_at = job_data.get("started_at")
+    last_update_at = job_data.get("last_update_at")
+    started_ts = job_data.get("started_ts")
+    elapsed_seconds = None
+    if isinstance(started_ts, (int, float)):
+        elapsed_seconds = max(0, int(time.time() - float(started_ts)))
+    elif started_at:
+        try:
+            elapsed_seconds = max(0, int((datetime.utcnow() - datetime.fromisoformat(str(started_at))).total_seconds()))
+        except Exception:
+            elapsed_seconds = None
+
+    return {
+        "job_id": job_id,
+        "status": job_data.get("status"),
+        "progress": job_data.get("progress", job_data.get("progresso", 0)),
+        "error": job_data.get("error") or job_data.get("erro"),
+        "error_type": job_data.get("error_type"),
+        "timeout_reason": job_data.get("timeout_reason"),
+        "result": job_data.get("result"),
+        "last_update_at": last_update_at,
+        "elapsed_seconds": elapsed_seconds,
+        "current_step": job_data.get("current_step"),
+        "timeout_budget_seconds": job_data.get("timeout_budget_seconds"),
+        "config": job_data.get("config"),
+    }
 
 
 def _validate_token_remote(token: str) -> Optional[dict]:
@@ -456,13 +499,30 @@ async def gerar_cardapio(
             db_chk.close()
 
     job_id = str(uuid.uuid4())[:8]
+    timeout_budget_raw = (os.getenv("MENUAI_FAST_BUDGET_SECONDS") or "300").strip()
+    try:
+        timeout_budget_seconds = max(60, int(float(timeout_budget_raw)))
+    except ValueError:
+        timeout_budget_seconds = 300
+    now_iso = datetime.utcnow().isoformat()
+    now_ts = time.time()
+    payload_config = body_resolved.model_dump()
+    payload_config["timeout_budget_seconds"] = timeout_budget_seconds
     job_state.jobs[job_id] = {
         "status": "iniciando",
         "progress": 0,
         "logs": [],
         "result": None,
         "error": None,
-        "config": body_resolved.model_dump(),
+        "error_type": None,
+        "timeout_reason": None,
+        "config": payload_config,
+        "started_at": now_iso,
+        "last_update_at": now_iso,
+        "started_ts": now_ts,
+        "last_update_ts": now_ts,
+        "current_step": "iniciando",
+        "timeout_budget_seconds": timeout_budget_seconds,
     }
     job_state.job_queues[job_id] = queue.Queue()
 
@@ -477,7 +537,7 @@ async def gerar_cardapio(
                 empresa_id=eid,
                 status="iniciando",
                 progresso=0,
-                parametros_json=body_resolved.model_dump(),
+                parametros_json=payload_config,
                 iniciado_em=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
                 criado_por_id=(str(usuario.id) if usuario else None),
@@ -654,7 +714,7 @@ async def stream_job(request: Request, job_id: str, usuario: Optional[Usuario] =
         return StreamingResponse(once(), media_type="text/event-stream")
     if j and j.get("status") == "erro":
         async def once_error():
-            yield f"data: {json.dumps({'type': 'error', 'message': j.get('error') or 'Job em erro', 'progress': j.get('progress', 0)}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': j.get('error') or 'Job em erro', 'progress': j.get('progress', 0), 'error_type': j.get('error_type'), 'timeout_reason': j.get('timeout_reason')}, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
             once_error(),
@@ -693,7 +753,57 @@ async def job_status(job_id: str, usuario: Optional[Usuario] = Depends(get_usuar
     j = get_job_or_restore(job_id, _db_ok) if _db_ok else job_state.jobs.get(job_id)
     if not j:
         raise HTTPException(404, f"Job '{job_id}' não encontrado")
-    return j
+    return _status_payload(job_id, j)
+
+
+@app.get("/api/admin/jobs/recentes")
+async def admin_recent_jobs(
+    limit: int = 20,
+    status: Optional[str] = None,
+    usuario: Optional[Usuario] = Depends(get_usuario_geracao),
+):
+    if not _db_ok:
+        return {"items": [], "total": 0}
+    if not usuario or getattr(usuario, "role", None) != "super_admin":
+        raise HTTPException(403, "Apenas super_admin pode consultar jobs recentes.")
+
+    from database.connection import SessionLocal
+    from database.models import JobAgente
+
+    db = SessionLocal()
+    try:
+        query = db.query(JobAgente)
+        if status:
+            query = query.filter(JobAgente.status == status)
+        rows = query.order_by(JobAgente.iniciado_em.desc()).limit(max(1, min(limit, 100))).all()
+        items = []
+        for row in rows:
+            duration_seconds = None
+            if row.iniciado_em:
+                end = row.concluido_em or row.updated_at
+                if end:
+                    duration_seconds = max(0.0, (end - row.iniciado_em).total_seconds())
+            params = row.parametros_json if isinstance(row.parametros_json, dict) else {}
+            items.append(
+                {
+                    "job_id": row.job_id,
+                    "status": row.status,
+                    "progress": row.progresso,
+                    "empresa_id": str(row.empresa_id) if row.empresa_id else None,
+                    "started_at": row.iniciado_em.isoformat() if row.iniciado_em else None,
+                    "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+                    "concluded_at": row.concluido_em.isoformat() if row.concluido_em else None,
+                    "duration_seconds": round(duration_seconds, 2) if duration_seconds is not None else None,
+                    "llm_model": params.get("llm_model"),
+                    "generation_mode": params.get("generation_mode"),
+                    "attempts": params.get("attempts"),
+                    "timeout_reason": params.get("timeout_reason"),
+                    "error": row.erro,
+                }
+            )
+        return {"items": items, "total": len(items)}
+    finally:
+        db.close()
 
 
 # ============================================================

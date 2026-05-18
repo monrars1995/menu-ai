@@ -27,6 +27,9 @@ export default function GerarPage() {
     startGeneration,
     handleNewGeneration,
     regenerateCardapio,
+    retryAfterTimeout,
+    switchModelAfterTimeout,
+    reduceDaysAfterTimeout,
     approveGeneratedCardapio,
     confirmHitl,
     sendChatMessage,
@@ -98,6 +101,7 @@ export default function GerarPage() {
               uploadData={msg.uploadData}
               uploadProgress={msg.uploadProgress}
               erro={msg.erro}
+              errorType={msg.errorType}
               onSelectContrato={selectContrato}
               loadingContratos={state.loadingContratos}
               contratos={state.contratos}
@@ -108,6 +112,9 @@ export default function GerarPage() {
               onApproveResult={approveGeneratedCardapio}
               onConfirmHitl={confirmHitl}
               onAnalyzeContrato={analyzeContrato}
+              onRetryGeneration={retryAfterTimeout}
+              onSwitchModel={switchModelAfterTimeout}
+              onReduceDays={reduceDaysAfterTimeout}
             />
           ))}
         </ChatContainer>

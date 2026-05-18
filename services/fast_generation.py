@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
@@ -116,6 +117,17 @@ SPECIAL_THEMES = [
     "-",
     "Oriental",
 ]
+
+logger = logging.getLogger("menuai.fast_generation")
+
+
+class FastGenerationTimeout(RuntimeError):
+    """Erro explícito para timeout de orçamento da geração rápida."""
+
+    def __init__(self, message: str, timeout_reason: str):
+        super().__init__(message)
+        self.timeout_reason = timeout_reason
+        self.error_type = "timeout_budget_exceeded"
 
 
 @dataclass(frozen=True)
@@ -406,7 +418,9 @@ def _llm_generate(
     target_custo_proteico: float,
     catalog: dict[str, list[Candidate]],
     repair_context: Optional[str] = None,
-) -> tuple[list[dict[str, Any]], str]:
+    request_timeout_seconds: Optional[float] = None,
+    max_attempts: Optional[int] = None,
+) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
     from pipeline.model_router import ModelRouter
 
     prompt_catalog = _catalog_for_prompt(catalog)
@@ -472,6 +486,8 @@ def _llm_generate(
         empresa_id=empresa_id,
         step_label="Geração rápida de cardápio",
         step_index=10 if not repair_context else 11,
+        timeout_seconds=request_timeout_seconds,
+        max_attempts=max_attempts,
     )
     fast_temp_raw = (os.getenv("MENUAI_FAST_LLM_TEMPERATURE") or "0.25").strip()
     try:
@@ -489,7 +505,13 @@ def _llm_generate(
     rows = payload.get("dias") or payload.get("cardapio") or []
     if not isinstance(rows, list):
         raise ValueError("Resposta LLM sem lista 'dias'.")
-    return rows, content
+    return rows, content, {
+        "model_id": result.model_id,
+        "model_used": result.model_used,
+        "provider_used": result.provider_used,
+        "attempts": result.attempts,
+        "fallback_used": result.is_fallback,
+    }
 
 
 def _deterministic_rows(catalog: dict[str, list[Candidate]], dias: int, refeicoes: list[str]) -> list[dict[str, Any]]:
@@ -677,6 +699,10 @@ def _persist_cardapio(
     catalog: dict[str, list[Candidate]],
     warnings: list[str],
     duration_seconds: float,
+    attempts: int,
+    model_used: Optional[str],
+    provider_used: Optional[str],
+    timeout_reason: Optional[str],
 ) -> str:
     from database.models import Cardapio, CardapioDia, CardapioRefeicao, JobAgente
     from services.knowledge_base import sync_cardapio_document
@@ -698,6 +724,10 @@ def _persist_cardapio(
             "llm_model": llm_model,
             "generation_mode": "fast",
             "duration_seconds": round(duration_seconds, 2),
+            "attempts": attempts,
+            "model_used": model_used or llm_model,
+            "provider_used": provider_used,
+            "timeout_reason": timeout_reason,
             "validation_warnings": warnings[:100],
         },
         updated_at=datetime.utcnow(),
@@ -779,17 +809,73 @@ def run_fast_generation(
 
     db = SessionLocal()
     try:
+        budget_seconds_raw = (os.getenv("MENUAI_FAST_BUDGET_SECONDS") or "300").strip()
+        per_call_timeout_raw = (os.getenv("MENUAI_FAST_LLM_ATTEMPT_TIMEOUT_SECONDS") or "55").strip()
+        max_attempts_raw = (os.getenv("MENUAI_FAST_LLM_MAX_ATTEMPTS") or "3").strip()
+        try:
+            budget_seconds = max(60.0, float(budget_seconds_raw))
+        except ValueError:
+            budget_seconds = 300.0
+        try:
+            per_call_timeout = max(20.0, float(per_call_timeout_raw))
+        except ValueError:
+            per_call_timeout = 55.0
+        try:
+            max_attempts = max(1, int(max_attempts_raw))
+        except ValueError:
+            max_attempts = 3
+
+        def remaining_budget_seconds() -> float:
+            return budget_seconds - (time.time() - started_ts)
+
+        def ensure_budget(stage: str, reserve_seconds: float = 0.0) -> None:
+            remaining = remaining_budget_seconds()
+            if remaining <= reserve_seconds:
+                raise FastGenerationTimeout(
+                    (
+                        f"Tempo limite da geração rápida excedido ({int(budget_seconds)}s). "
+                        f"Etapa atual: {stage}. Tente novamente, troque o modelo ou reduza os dias."
+                    ),
+                    timeout_reason=f"budget_exceeded_at_{stage}",
+                )
+
+        logger.info(
+            "job_event=%s",
+            json.dumps(
+                {
+                    "event": "fast_generation_started",
+                    "job_id": job_id,
+                    "empresa_id": empresa_id,
+                    "dias": dias,
+                    "budget_seconds": budget_seconds,
+                    "per_call_timeout_seconds": per_call_timeout,
+                    "max_attempts": max_attempts,
+                },
+                ensure_ascii=False,
+                default=str,
+            ),
+        )
         refeicoes_norm = refeicoes or ["almoco"]
+        ensure_budget("catalog_snapshot", reserve_seconds=25)
         progress(45, "📚 Montando catálogo rápido de fichas técnicas...", "Gestor de Fichas Técnicas")
         catalog = _catalog_snapshot(db, empresa_id)
         errors = _core_catalog_errors(catalog, refeicoes_norm)
         if errors:
             raise ValueError(" ".join(errors))
 
+        ensure_budget("initial_llm_generation", reserve_seconds=20)
         progress(58, "🧠 Gerando matriz operacional do cardápio...", "Nutricionista")
         warnings: list[str] = []
+        llm_attempts_total = 0
+        llm_model_used: Optional[str] = None
+        llm_provider_used: Optional[str] = None
+        timeout_reason: Optional[str] = None
         try:
-            rows, raw_response = _llm_generate(
+            timeout_for_this_call = min(
+                per_call_timeout,
+                max(20.0, remaining_budget_seconds() - 12.0),
+            )
+            rows, raw_response, call_meta = _llm_generate(
                 job_id=job_id,
                 empresa_id=empresa_id,
                 llm_model=llm_model,
@@ -800,12 +886,18 @@ def run_fast_generation(
                 target_custo_total=target_custo_total,
                 target_custo_proteico=target_custo_proteico,
                 catalog=catalog,
+                request_timeout_seconds=timeout_for_this_call,
+                max_attempts=max_attempts,
             )
+            llm_attempts_total += int(call_meta.get("attempts") or 0)
+            llm_model_used = str(call_meta.get("model_used") or llm_model or "")
+            llm_provider_used = str(call_meta.get("provider_used") or "")
         except Exception as exc:
             warnings.append(f"Geração LLM inicial falhou; usada rotação determinística. Erro: {exc}")
             rows = _deterministic_rows(catalog, dias, refeicoes_norm)
             raw_response = ""
 
+        ensure_budget("validation", reserve_seconds=10)
         progress(76, "🔎 Validando dias, colunas e repetições...", "Analista Nutricional")
         normalized, validation_warnings = _validate_and_normalize(
             rows,
@@ -816,9 +908,14 @@ def run_fast_generation(
         warnings.extend(validation_warnings)
 
         if validation_warnings and raw_response:
+            ensure_budget("repair_llm_generation", reserve_seconds=8)
             progress(82, "🛠️ Ajustando automaticamente inconsistências do cardápio...", "Nutricionista")
             try:
-                repaired, _ = _llm_generate(
+                timeout_for_repair = min(
+                    per_call_timeout,
+                    max(20.0, remaining_budget_seconds() - 8.0),
+                )
+                repaired, _, repair_meta = _llm_generate(
                     job_id=job_id,
                     empresa_id=empresa_id,
                     llm_model=llm_model,
@@ -833,7 +930,14 @@ def run_fast_generation(
                         {"warnings": validation_warnings[:30], "saida_anterior": normalized[: max(dias, 30)]},
                         ensure_ascii=False,
                     )[:12000],
+                    request_timeout_seconds=timeout_for_repair,
+                    max_attempts=max_attempts,
                 )
+                llm_attempts_total += int(repair_meta.get("attempts") or 0)
+                if not llm_model_used:
+                    llm_model_used = str(repair_meta.get("model_used") or llm_model or "")
+                if not llm_provider_used:
+                    llm_provider_used = str(repair_meta.get("provider_used") or "")
                 normalized, repair_warnings = _validate_and_normalize(
                     repaired,
                     dias=dias,
@@ -844,6 +948,7 @@ def run_fast_generation(
             except Exception as exc:
                 warnings.append(f"Reparo LLM falhou; mantida versão normalizada. Erro: {exc}")
 
+        ensure_budget("persist", reserve_seconds=0)
         progress(90, "💾 Persistindo cardápio estruturado...", "Sistema")
         markdown = _markdown_table(normalized)
         duration_seconds = time.time() - started_ts
@@ -862,12 +967,52 @@ def run_fast_generation(
             catalog=catalog,
             warnings=warnings,
             duration_seconds=duration_seconds,
+            attempts=llm_attempts_total,
+            model_used=llm_model_used,
+            provider_used=llm_provider_used,
+            timeout_reason=timeout_reason,
+        )
+        logger.info(
+            "job_event=%s",
+            json.dumps(
+                {
+                    "event": "fast_generation_completed",
+                    "job_id": job_id,
+                    "cardapio_id": cardapio_id,
+                    "duration_seconds": round(duration_seconds, 2),
+                    "attempts": llm_attempts_total,
+                    "model_used": llm_model_used or llm_model,
+                    "provider_used": llm_provider_used,
+                    "warnings_count": len(warnings),
+                },
+                ensure_ascii=False,
+                default=str,
+            ),
         )
         return {
             "markdown": markdown,
             "cardapio_id": cardapio_id,
             "warnings": warnings,
             "duration_seconds": round(duration_seconds, 2),
+            "attempts": llm_attempts_total,
+            "model_used": llm_model_used or llm_model,
+            "provider_used": llm_provider_used,
         }
+    except FastGenerationTimeout as timeout_exc:
+        timeout_reason = timeout_exc.timeout_reason
+        logger.warning(
+            "job_event=%s",
+            json.dumps(
+                {
+                    "event": "fast_generation_timeout",
+                    "job_id": job_id,
+                    "duration_seconds": round(time.time() - started_ts, 2),
+                    "timeout_reason": timeout_reason,
+                },
+                ensure_ascii=False,
+                default=str,
+            ),
+        )
+        raise
     finally:
         db.close()

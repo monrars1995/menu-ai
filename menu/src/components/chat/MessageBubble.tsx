@@ -75,6 +75,7 @@ export interface MessageBubbleProps {
   uploadData?: UploadData;
   uploadProgress?: number;
   erro?: string;
+  errorType?: string;
   onSelectContrato?: (id: string) => void;
   loadingContratos?: boolean;
   contratos?: Array<{ id: string; nome: string }>;
@@ -91,6 +92,9 @@ export interface MessageBubbleProps {
   onApproveResult?: (cardapioId: string) => void;
   onConfirmHitl?: (confirm: boolean, ajustes?: string) => void;
   onAnalyzeContrato?: (id?: string, nome?: string, force?: boolean) => void;
+  onRetryGeneration?: () => void;
+  onSwitchModel?: () => void;
+  onReduceDays?: () => void;
 }
 
 export function MessageBubble(props: MessageBubbleProps) {
@@ -171,7 +175,15 @@ export function MessageBubble(props: MessageBubbleProps) {
             onApproveResult={props.onApproveResult}
           />
         )}
-        {type === "error" && <ErrorCard erro={props.erro || content} />}
+        {type === "error" && (
+          <ErrorCard
+            erro={props.erro || content}
+            errorType={props.errorType}
+            onRetryGeneration={props.onRetryGeneration}
+            onSwitchModel={props.onSwitchModel}
+            onReduceDays={props.onReduceDays}
+          />
+        )}
       </div>
     </div>
   );
@@ -646,12 +658,55 @@ function ResultCard({
 // Error Card
 // ---------------------------------------------------------------------------
 
-function ErrorCard({ erro }: { erro: string }) {
+function ErrorCard({
+  erro,
+  errorType,
+  onRetryGeneration,
+  onSwitchModel,
+  onReduceDays,
+}: {
+  erro: string;
+  errorType?: string;
+  onRetryGeneration?: () => void;
+  onSwitchModel?: () => void;
+  onReduceDays?: () => void;
+}) {
+  const normalizedError = (erro || "").toLowerCase();
+  const shouldShowRecoveryActions =
+    (errorType || "").includes("timeout") ||
+    normalizedError.includes("timeout") ||
+    normalizedError.includes("sem progresso") ||
+    normalizedError.includes("sincroniza");
+
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 p-4">
       <div className="flex items-start gap-2.5">
         <AlertCircle size={16} className="mt-0.5 shrink-0 text-red-600" />
-        <p className="text-sm text-red-700">{erro}</p>
+        <div className="space-y-3">
+          <p className="text-sm text-red-700">{erro}</p>
+          {shouldShowRecoveryActions && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={onRetryGeneration}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+              >
+                Tentar novamente
+              </button>
+              <button
+                onClick={onSwitchModel}
+                className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+              >
+                Trocar modelo
+              </button>
+              <button
+                onClick={onReduceDays}
+                className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+              >
+                Reduzir dias
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

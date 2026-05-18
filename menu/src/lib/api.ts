@@ -1,5 +1,9 @@
 function resolveApiBase(): string {
   const configured = (process.env.NEXT_PUBLIC_API_URL || "").trim();
+  const mode = (process.env.NEXT_PUBLIC_API_MODE || "auto").trim().toLowerCase();
+  if (mode === "proxy" || mode === "local") return "/api-proxy";
+  if (mode === "remote") return configured || "https://backend.neuros.my";
+
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     const isLocalhost = host === "localhost" || host === "127.0.0.1";

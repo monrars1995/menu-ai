@@ -52,6 +52,7 @@ export interface ChatMessage {
   uploadData?: UploadData;
   uploadProgress?: number;
   erro?: string;
+  errorType?: string;
 }
 
 export interface ConfirmData {
@@ -123,6 +124,8 @@ export interface ChatState {
 
 const DEFAULT_REFEICOES = ["almoco", "jantar"];
 const LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
+const STALE_SYNC_WARNING_MS = 20000;
+const STALE_SYNC_TIMEOUT_MS = 90000;
 
 function _cleanList(items?: string[] | Record<string, unknown>): string[] {
   if (!items) return [];
@@ -395,6 +398,25 @@ export function useChatGenerator() {
     clearHeartbeatTimer();
   }
 
+  function failActiveGeneration(message: string, errorType = "stale_job_timeout") {
+    const activeJob = activeJobIdRef.current;
+    if (activeJob && finalizedJobsRef.current[activeJob]) return;
+    if (activeJob) finalizedJobsRef.current[activeJob] = true;
+    updateActivePipelineMessage(() => ({
+      type: "error",
+      content: message,
+      erro: message,
+      errorType,
+    }));
+    setState((s) => ({ ...s, phase: "error", loading: false }));
+    clearActiveGenerationRefs();
+    clearPollTimer();
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+  }
+
   function markJobFinalized(jobId: string): boolean {
     if (finalizedJobsRef.current[jobId]) return false;
     finalizedJobsRef.current[jobId] = true;
@@ -434,11 +456,18 @@ export function useChatGenerator() {
           ? msg.content.split(" • ")[0]
           : "Gerando cardapio...";
         const content = `${baseContent} • ${elapsed}`;
-        if (staleMs > 10000) {
+        if (staleMs >= STALE_SYNC_TIMEOUT_MS) {
+          failActiveGeneration(
+            "O servidor não atualizou o progresso dentro do tempo esperado. Tente novamente, troque o modelo ou reduza os dias.",
+            "timeout_budget_exceeded"
+          );
+          return {};
+        }
+        if (staleMs > STALE_SYNC_WARNING_MS) {
           return {
             content,
             pensamento:
-              "Sincronizando progresso com o servidor...",
+              "Sincronização degradada: sem atualização recente do backend. Tentando recuperar...",
           };
         }
         return { content };
@@ -920,7 +949,19 @@ export function useChatGenerator() {
           pollRetryCountRef.current[jobId] = 0;
           const progress = Number(snapshot?.progress ?? 0) || 0;
           const status = String(snapshot?.status || "");
-          const erro = snapshot?.erro || snapshot?.error;
+          const erro = snapshot?.error;
+          const errorType = snapshot?.error_type;
+          const backendLastUpdateAt = snapshot?.last_update_at ? Date.parse(String(snapshot.last_update_at)) : NaN;
+          if (status === "executando" && Number.isFinite(backendLastUpdateAt)) {
+            const staleMs = Date.now() - Number(backendLastUpdateAt);
+            if (staleMs > STALE_SYNC_TIMEOUT_MS) {
+              failActiveGeneration(
+                "Geração parada no backend por tempo excessivo. Tente novamente, troque o modelo ou reduza os dias.",
+                "timeout_budget_exceeded"
+              );
+              return;
+            }
+          }
 
           updateActivePipelineMessage((msg) => {
             const updates: Partial<ChatMessage> = {
@@ -931,6 +972,10 @@ export function useChatGenerator() {
               updates.type = "error";
               updates.content = String(erro);
               updates.erro = String(erro);
+              updates.errorType = errorType ? String(errorType) : "generation_failed";
+            }
+            if (snapshot?.current_step) {
+              updates.pensamento = String(snapshot.current_step);
             }
             return updates;
           });
@@ -948,7 +993,12 @@ export function useChatGenerator() {
             clearActiveGenerationRefs();
             markJobFinalized(jobId);
             setState((s) => ({ ...s, phase: "error", loading: false }));
-            if (erro) addAgentMessage("error", String(erro));
+            if (erro) {
+              addAgentMessage("error", String(erro), {
+                erro: String(erro),
+                errorType: errorType ? String(errorType) : "generation_failed",
+              });
+            }
             return;
           }
 
@@ -1006,6 +1056,7 @@ export function useChatGenerator() {
             }
           }
           if (data.message && data.type === "log") updates.pensamento = String(data.message).slice(0, 220);
+          if (data.current_step) updates.pensamento = String(data.current_step).slice(0, 220);
           if (data.pensamento) updates.pensamento = String(data.pensamento).slice(0, 220);
           if (data.thought) updates.pensamento = String(data.thought).slice(0, 220);
           if (data.preview) updates.pensamento = String(data.preview).slice(0, 220);
@@ -1024,6 +1075,7 @@ export function useChatGenerator() {
             updates.erro = data.erro || data.error || data.message || "Erro na geracao";
             updates.content = updates.erro;
             updates.type = "error";
+            updates.errorType = data.error_type || "generation_failed";
           }
           return updates;
         });
@@ -1088,14 +1140,20 @@ export function useChatGenerator() {
             clearActiveGenerationRefs();
             markJobFinalized(jobId);
             setState((prev) => ({ ...prev, phase: "error", loading: false }));
-            addAgentMessage("error", s.erro || s.error || "Erro na geracao");
+            const message = s.error || "Erro na geracao";
+            addAgentMessage("error", message, {
+              erro: message,
+              errorType: s.error_type || "generation_failed",
+            });
           } else {
             setTimeout(() => connectStream(jobId, skipContractAnalysis), 2000);
           }
         })
         .catch(() => {
-          clearActiveGenerationRefs();
-          setState((s) => ({ ...s, phase: "error", loading: false }));
+          failActiveGeneration(
+            "Falha ao recuperar status de geração. Verifique a conexão com a API e tente novamente.",
+            "status_sync_failed"
+          );
         });
     };
 
@@ -1132,6 +1190,31 @@ export function useChatGenerator() {
     clearPollTimer();
     clearActiveGenerationRefs();
     startGeneration();
+  }
+
+  function retryAfterTimeout() {
+    const s = stateRef.current!;
+    if (s.loading) return;
+    addUserMessage("Tentar novamente");
+    startGeneration();
+  }
+
+  function switchModelAfterTimeout() {
+    const s = stateRef.current!;
+    if (!s.llmModels.length) return;
+    const currentIndex = Math.max(0, s.llmModels.findIndex((m) => m.id === s.llmModel));
+    const nextModel = s.llmModels[(currentIndex + 1) % s.llmModels.length];
+    if (!nextModel?.id) return;
+    setLlmModel(nextModel.id);
+    addAgentMessage("text", `Modelo alterado para ${nextModel.label || nextModel.id}.`);
+  }
+
+  function reduceDaysAfterTimeout() {
+    const s = stateRef.current!;
+    const reduced = Math.max(7, Math.min(21, Math.floor(s.dias * 0.7)));
+    const nextDays = reduced === s.dias ? Math.max(1, s.dias - 5) : reduced;
+    setState((prev) => ({ ...prev, dias: nextDays }));
+    addAgentMessage("text", `Dias reduzidos para ${nextDays}. Você pode tentar novamente agora.`);
   }
 
   function approveGeneratedCardapio(cardapioId: string) {
@@ -1265,6 +1348,9 @@ export function useChatGenerator() {
     startGeneration,
     handleNewGeneration,
     regenerateCardapio,
+    retryAfterTimeout,
+    switchModelAfterTimeout,
+    reduceDaysAfterTimeout,
     approveGeneratedCardapio,
     setLlmModel,
     confirmHitl,
