@@ -4,6 +4,7 @@ Menu.AI — catálogo LLM centralizado.
 Provedores suportados:
 - OpenAI
 - Gemini
+- Moonshot (Kimi oficial)
 - OpenRouter
 """
 from __future__ import annotations
@@ -44,9 +45,11 @@ class ResolvedModelConfig:
     api_key: Optional[str]
     api_base: Optional[str]
     extra_headers: Optional[Dict[str, str]] = None
+    extra_body: Optional[Dict[str, object]] = None
 
 
 OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+MOONSHOT_API_BASE = "https://api.moonshot.ai/v1"
 DEFAULT_LLM_MODEL_ID = "openai-gpt-5.5"
 
 
@@ -100,6 +103,20 @@ def _get_gemini_config() -> ProviderConfig:
     )
 
 
+def _get_moonshot_config() -> ProviderConfig:
+    api_key = (os.getenv("MOONSHOT_API_KEY") or "").strip()
+    api_base = (os.getenv("MOONSHOT_API_BASE") or MOONSHOT_API_BASE).strip()
+    return ProviderConfig(
+        name="moonshot",
+        api_key=api_key or None,
+        api_base=api_base,
+        default_model="kimi-k2.6",
+        models=["kimi-k2.6"],
+        enabled=bool(api_key),
+        missing_env_message="MOONSHOT_API_KEY não configurada.",
+    )
+
+
 _CATALOG: tuple[ModelEntry, ...] = (
     ModelEntry(
         id="openai-gpt-5.5",
@@ -131,6 +148,13 @@ _CATALOG: tuple[ModelEntry, ...] = (
         description="Modelo Gemini estável de menor custo para tarefas leves.",
     ),
     ModelEntry(
+        id="kimi-k2.6",
+        label="Kimi K2.6",
+        provider="moonshot",
+        model_string="openai/kimi-k2.6",
+        description="Modelo oficial da Moonshot via endpoint OpenAI-compatible para geração agentic e long-context.",
+    ),
+    ModelEntry(
         id="queen-3.6",
         label="Queen 3.6",
         provider="openrouter",
@@ -149,7 +173,7 @@ _CATALOG: tuple[ModelEntry, ...] = (
         label="Kimi K2.5",
         provider="openrouter",
         model_string="openrouter/moonshotai/kimi-k2.5",
-        description="Alternativa para tarefas longas e execução robusta via OpenRouter.",
+        description="Compatibilidade legada via OpenRouter para tarefas longas e execução robusta.",
     ),
 )
 
@@ -163,6 +187,7 @@ def _load_provider_configs() -> Dict[str, ProviderConfig]:
         _PROVIDER_CONFIGS = {
             "openai": _get_openai_config(),
             "gemini": _get_gemini_config(),
+            "moonshot": _get_moonshot_config(),
             "openrouter": _get_openrouter_config(),
         }
     return _PROVIDER_CONFIGS
@@ -248,17 +273,19 @@ def resolve_model_config(model_id: Optional[str]) -> ResolvedModelConfig:
         api_key=provider_cfg.api_key,
         api_base=provider_cfg.api_base,
         extra_headers=provider_cfg.extra_headers,
+        extra_body={"thinking": {"type": "disabled"}} if entry.provider == "moonshot" else None,
     )
 
 
 _FALLBACK_CHAINS: Dict[str, List[str]] = {
-    "openai-gpt-5.5": ["gemini-3.1-pro-preview", "queen-3.6", "gemini-3-flash-preview"],
-    "gemini-3.1-pro-preview": ["openai-gpt-5.5", "queen-3.6", "gemini-3-flash-preview"],
-    "gemini-3-flash-preview": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "queen-3.6"],
-    "gemini-3.1-flash-lite": ["gemini-3-flash-preview", "openai-gpt-5.5", "queen-3.6"],
-    "queen-3.6": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "glm-5-1"],
+    "openai-gpt-5.5": ["gemini-3.1-pro-preview", "kimi-k2.6", "queen-3.6"],
+    "gemini-3.1-pro-preview": ["openai-gpt-5.5", "kimi-k2.6", "queen-3.6"],
+    "gemini-3-flash-preview": ["openai-gpt-5.5", "kimi-k2.6", "queen-3.6"],
+    "gemini-3.1-flash-lite": ["gemini-3-flash-preview", "openai-gpt-5.5", "kimi-k2.6"],
+    "kimi-k2.6": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "queen-3.6"],
+    "queen-3.6": ["openai-gpt-5.5", "gemini-3.1-pro-preview", "kimi-k2.6"],
     "glm-5-1": ["openai-gpt-5.5", "queen-3.6", "gemini-3.1-pro-preview"],
-    "kimi-k2.5": ["openai-gpt-5.5", "queen-3.6", "gemini-3.1-pro-preview"],
+    "kimi-k2.5": ["kimi-k2.6", "openai-gpt-5.5", "queen-3.6"],
 }
 
 

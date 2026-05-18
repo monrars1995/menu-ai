@@ -79,8 +79,8 @@ def main() -> int:
     else:
         os.environ["ALLOW_OPEN_REGISTRO"] = "true"
 
-    if not any((os.getenv(k) or "").strip() for k in ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY")):
-        raise RuntimeError("Configure OPENAI_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY ou OPENROUTER_API_KEY para executar scripts/smoke_flow.py.")
+    if not any((os.getenv(k) or "").strip() for k in ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "MOONSHOT_API_KEY", "OPENROUTER_API_KEY")):
+        raise RuntimeError("Configure OPENAI_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, MOONSHOT_API_KEY ou OPENROUTER_API_KEY para executar scripts/smoke_flow.py.")
 
     from seed_data import TEST_EMPRESA_ID
 

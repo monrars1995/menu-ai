@@ -194,6 +194,32 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _summarize_llm_failure(exc: Exception) -> str:
+    message = str(exc or "").strip()
+    normalized = message.lower()
+    if any(token in normalized for token in ("quota exceeded", "resource_exhausted", "ratelimiterror", "rate limit")):
+        if "gemini" in normalized:
+            return "Gemini oficial indisponível por quota/429 da conta configurada."
+        if "openai" in normalized:
+            return "OpenAI temporariamente indisponível por limite/quota da conta configurada."
+        if "moonshot" in normalized or "kimi" in normalized:
+            return "Kimi oficial temporariamente indisponível por limite/quota da conta configurada."
+        return "Provedor LLM temporariamente indisponível por limite/quota."
+    if "backoff" in normalized:
+        if "openai" in normalized:
+            return "OpenAI em backoff temporário após falhas recentes."
+        if "gemini" in normalized:
+            return "Gemini em backoff temporário após falhas recentes."
+        if "moonshot" in normalized or "kimi" in normalized:
+            return "Kimi oficial em backoff temporário após falhas recentes."
+        return "Provedor LLM em backoff temporário após falhas recentes."
+    if "hard-timeout" in normalized or "timeout" in normalized:
+        return "Timeout ao aguardar resposta do provedor LLM."
+    if message:
+        return message[:240]
+    return "Provedor LLM indisponível no momento."
+
+
 def _bucket_for(category: str, name: str) -> str:
     cat = _norm(category)
     nome = _norm(name)
@@ -1072,7 +1098,11 @@ def run_fast_generation(
             llm_prompt_chars = int(call_meta.get("prompt_chars") or 0) or llm_prompt_chars
             llm_prompt_catalog_limit = int(call_meta.get("prompt_catalog_limit") or 0) or llm_prompt_catalog_limit
         except Exception as exc:
-            warnings.append(f"Geração LLM inicial falhou; usada rotação determinística. Erro: {exc}")
+            logger.warning("Falha na geração LLM inicial do modo fast: %s", exc)
+            warnings.append(
+                "Geração LLM inicial falhou; usada rotação determinística. "
+                f"Motivo: {_summarize_llm_failure(exc)}"
+            )
             progress(66, "⚙️ Modelo indisponível no momento. Aplicando fallback determinístico rápido...", "Sistema")
             rows = _deterministic_rows(catalog, dias, refeicoes_norm)
             raw_response = ""

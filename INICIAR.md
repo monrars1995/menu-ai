@@ -1,4 +1,4 @@
-# Menu.AI v3.6.1 — Como iniciar
+# Menu.AI v3.6.18 — Como iniciar
 
 ## Stack suportada
 
@@ -16,7 +16,7 @@
 ## Pré-requisitos
 
 - Docker instalado e rodando
-- Chave de API de pelo menos um provedor LLM: OpenAI, Gemini ou OpenRouter
+- Chave de API de pelo menos um provedor LLM: OpenAI, Gemini, Moonshot ou OpenRouter
 
 ---
 
@@ -29,6 +29,7 @@ Abra o arquivo `.env` e configure pelo menos um provedor LLM:
 ```bash
 OPENAI_API_KEY=sk-SUA_CHAVE_OPENAI
 GEMINI_API_KEY=SUA_CHAVE_GEMINI
+MOONSHOT_API_KEY=sua_chave_moonshot
 # opcional
 OPENROUTER_API_KEY=sk-or-v1-SUA_CHAVE_OPENROUTER
 MENUAI_DEFAULT_LLM_MODEL=openai-gpt-5.5
@@ -45,9 +46,10 @@ Catálogo inicial da aplicação:
 - `gemini-3.1-pro-preview` -> `gemini/gemini-3.1-pro-preview`
 - `gemini-3-flash-preview` -> `gemini/gemini-3-flash-preview`
 - `gemini-3.1-flash-lite` -> `gemini/gemini-3.1-flash-lite`
+- `kimi-k2.6` -> `openai/kimi-k2.6` (Moonshot oficial)
 - `queen-3.6` -> `qwen/qwen3.6-plus`
 - `glm-5-1` -> `z-ai/glm-5.1`
-- `kimi-k2.5` -> `moonshotai/kimi-k2.5`
+- `kimi-k2.5` -> `moonshotai/kimi-k2.5` (compatibilidade via OpenRouter)
 
 Se for usar Supabase:
 

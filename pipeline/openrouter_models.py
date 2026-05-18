@@ -9,6 +9,7 @@ Modelos suportados:
 - gemini-3.1-pro-preview
 - gemini-3-flash-preview
 - gemini-3.1-flash-lite
+- kimi-k2.6
 - queen-3.6
 - glm-5-1
 - kimi-k2.5

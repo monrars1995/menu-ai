@@ -122,6 +122,7 @@ class ModelRouter:
         default_map = {
             "openrouter": 900.0,
             "gemini": 180.0,
+            "moonshot": 120.0,
             "openai": 120.0,
         }
         default_value = default_map.get(provider, 120.0)
@@ -365,6 +366,8 @@ class ModelRouter:
                 kwargs["api_key"] = cfg.api_key
             if cfg.api_base:
                 kwargs["api_base"] = cfg.api_base
+            if getattr(cfg, "extra_body", None):
+                kwargs["extra_body"] = dict(cfg.extra_body)
             if extra_headers or getattr(cfg, "extra_headers", None):
                 merged_headers = {}
                 if getattr(cfg, "extra_headers", None):

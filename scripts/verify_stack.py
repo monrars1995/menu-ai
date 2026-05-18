@@ -24,7 +24,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(ROOT, ".env"))
 
 # Chaves aceitas pelos provedores LLM diretos e OpenRouter.
-_LLM_ENV_KEYS = ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY")
+_LLM_ENV_KEYS = ("OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "MOONSHOT_API_KEY", "OPENROUTER_API_KEY")
 
 
 def _mask_database_url(url: str) -> str:
@@ -78,7 +78,7 @@ def main() -> int:
     if st == "ok":
         print(f"LLM: OK (provedor(es) configurado(s): {', '.join(keys)})")
     else:
-        print("LLM: nenhuma chave configurada — defina OPENAI_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY ou OPENROUTER_API_KEY")
+        print("LLM: nenhuma chave configurada — defina OPENAI_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, MOONSHOT_API_KEY ou OPENROUTER_API_KEY")
 
     health_url = os.getenv("VERIFY_STACK_HEALTH_URL", "http://127.0.0.1:8000/api/health").strip()
     try:

@@ -26,6 +26,7 @@ Detalhes e Docker: ver `INICIAR.md`.
 | `CREATE_ALL_ON_START` | `true` (default em DEBUG) = `criar_tabelas()`; em produção usar **`alembic upgrade head`** e tipicamente `false`. |
 | `OPENAI_API_KEY` | Habilita modelos diretos OpenAI via LiteLLM; default recomendado `openai-gpt-5.5`. |
 | `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Habilita modelos diretos Gemini via LiteLLM. |
+| `MOONSHOT_API_KEY` | Habilita Kimi oficial via endpoint OpenAI-compatible da Moonshot (`kimi-k2.6`). |
 | `OPENROUTER_API_KEY` | Habilita modelos OpenRouter (`queen-3.6`, `glm-5-1`, `kimi-k2.5`). |
 | `MENUAI_DEFAULT_LLM_MODEL` | Id interno opcional quando o pedido não envia `llm_model`; default `openai-gpt-5.5`. |
 | `MENUAI_GENERATION_MODE` | `fast` (default) usa geração estruturada rápida; `full` usa o pipeline completo legado de 7 etapas. |
