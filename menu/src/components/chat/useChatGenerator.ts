@@ -375,7 +375,9 @@ export function useChatGenerator() {
     const forced = (process.env.NEXT_PUBLIC_STREAM_TRANSPORT || "").trim().toLowerCase();
     if (forced === "polling") return true;
     if (forced === "sse") return false;
-    return /railway\.app/i.test(API_BASE);
+    // Default: prioriza SSE para experiência em tempo real.
+    // Polling fica como fallback automático em erro de stream.
+    return false;
   }
 
   function clearPollTimer() {
