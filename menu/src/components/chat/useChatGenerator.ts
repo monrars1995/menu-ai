@@ -124,8 +124,9 @@ export interface ChatState {
 
 const DEFAULT_REFEICOES = ["almoco", "jantar"];
 const LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
-const STALE_SYNC_WARNING_MS = 20000;
-const STALE_SYNC_TIMEOUT_MS = 90000;
+const DEFAULT_TIMEOUT_BUDGET_SECONDS = 300;
+const STALE_SYNC_WARNING_MS = 45000;
+const STALE_SYNC_TIMEOUT_MS = 240000;
 
 function _cleanList(items?: string[] | Record<string, unknown>): string[] {
   if (!items) return [];
@@ -184,6 +185,8 @@ export function useChatGenerator() {
   const lastRealtimeUpdateRef = useRef<number>(0);
   const lastStatusSignatureRef = useRef<string>("");
   const lastBackendProgressAtRef = useRef<number>(0);
+  const staleWarningMsRef = useRef<number>(STALE_SYNC_WARNING_MS);
+  const staleTimeoutMsRef = useRef<number>(STALE_SYNC_TIMEOUT_MS);
 
   // Refs to avoid stale closures in SSE callbacks
   const stateRef = useRef<ChatState | null>(null);
@@ -401,7 +404,19 @@ export function useChatGenerator() {
     lastRealtimeUpdateRef.current = 0;
     lastStatusSignatureRef.current = "";
     lastBackendProgressAtRef.current = 0;
+    staleWarningMsRef.current = STALE_SYNC_WARNING_MS;
+    staleTimeoutMsRef.current = STALE_SYNC_TIMEOUT_MS;
     clearHeartbeatTimer();
+  }
+
+  function applyStaleThresholdFromBudget(timeoutBudgetSeconds?: number) {
+    const budget = Number.isFinite(timeoutBudgetSeconds)
+      ? Math.max(60, Number(timeoutBudgetSeconds))
+      : DEFAULT_TIMEOUT_BUDGET_SECONDS;
+    const timeoutMs = Math.max(120000, Math.min(280000, Math.floor(budget * 1000 * 0.88)));
+    const warningMs = Math.max(30000, Math.min(90000, Math.floor(timeoutMs * 0.35)));
+    staleTimeoutMsRef.current = timeoutMs;
+    staleWarningMsRef.current = warningMs;
   }
 
   function failActiveGeneration(message: string, errorType = "stale_job_timeout") {
@@ -457,19 +472,23 @@ export function useChatGenerator() {
       const staleMs = lastRealtimeUpdateRef.current
         ? Date.now() - lastRealtimeUpdateRef.current
         : 0;
+      const timeoutMs = staleTimeoutMsRef.current;
+      const warningMs = staleWarningMsRef.current;
+
+      if (staleMs >= timeoutMs) {
+        failActiveGeneration(
+          "O servidor não atualizou o progresso dentro do tempo esperado. Tente novamente, troque o modelo ou reduza os dias.",
+          "timeout_budget_exceeded"
+        );
+        return;
+      }
+
       updateActivePipelineMessage((msg) => {
         const baseContent = msg.content?.startsWith("Gerando cardapio")
           ? msg.content.split(" • ")[0]
           : "Gerando cardapio...";
         const content = `${baseContent} • ${elapsed}`;
-        if (staleMs >= STALE_SYNC_TIMEOUT_MS) {
-          failActiveGeneration(
-            "O servidor não atualizou o progresso dentro do tempo esperado. Tente novamente, troque o modelo ou reduza os dias.",
-            "timeout_budget_exceeded"
-          );
-          return {};
-        }
-        if (staleMs > STALE_SYNC_WARNING_MS) {
+        if (staleMs > warningMs) {
           return {
             content,
             pensamento:
@@ -906,6 +925,7 @@ export function useChatGenerator() {
       contrato_analise_confirmada: skipContractAnalysis,
       generation_mode: "fast",
     };
+    applyStaleThresholdFromBudget(DEFAULT_TIMEOUT_BUDGET_SECONDS);
 
     api.gerar
       .start(data)
@@ -968,6 +988,8 @@ export function useChatGenerator() {
           }
 
           const backendLastUpdateAt = snapshot?.last_update_at ? Date.parse(String(snapshot.last_update_at)) : NaN;
+          const timeoutBudgetSeconds = Number(snapshot?.timeout_budget_seconds || DEFAULT_TIMEOUT_BUDGET_SECONDS);
+          applyStaleThresholdFromBudget(timeoutBudgetSeconds);
           if (status === "executando") {
             const staleByBackend = Number.isFinite(backendLastUpdateAt)
               ? Date.now() - Number(backendLastUpdateAt)
@@ -975,7 +997,7 @@ export function useChatGenerator() {
             const staleBySignature = lastBackendProgressAtRef.current
               ? Date.now() - lastBackendProgressAtRef.current
               : 0;
-            if (Math.max(staleByBackend, staleBySignature) > STALE_SYNC_TIMEOUT_MS) {
+            if (Math.max(staleByBackend, staleBySignature) > staleTimeoutMsRef.current) {
               failActiveGeneration(
                 "Geração parada no backend por tempo excessivo. Tente novamente, troque o modelo ou reduza os dias.",
                 "timeout_budget_exceeded"

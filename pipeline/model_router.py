@@ -120,7 +120,11 @@ class ModelRouter:
         from pipeline.llm_providers import resolve_model_config
         return resolve_model_config(model_id)
 
-    def _completion_with_hard_timeout(self, call_kwargs: dict[str, Any]):
+    def _completion_with_hard_timeout(
+        self,
+        call_kwargs: dict[str, Any],
+        heartbeat_meta: Optional[dict[str, Any]] = None,
+    ):
         """
         Executa completion com timeout duro local.
 
@@ -133,15 +137,46 @@ class ModelRouter:
         except ValueError:
             hard_extra = 8.0
 
+        heartbeat_raw = (os.getenv("MENUAI_LLM_HEARTBEAT_SECONDS") or "8").strip()
+        try:
+            heartbeat_seconds = max(3.0, float(heartbeat_raw))
+        except ValueError:
+            heartbeat_seconds = 8.0
+
         base_timeout = float(call_kwargs.get("timeout") or self.timeout_seconds or 55.0)
         hard_timeout = max(20.0, base_timeout + hard_extra)
+        started_at = time.monotonic()
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(completion, **call_kwargs)
-            try:
-                return future.result(timeout=hard_timeout)
-            except FutureTimeout as exc:
-                future.cancel()
-                raise TimeoutError(f"LLM hard-timeout excedido ({int(hard_timeout)}s)") from exc
+            while True:
+                elapsed = time.monotonic() - started_at
+                remaining = hard_timeout - elapsed
+                if remaining <= 0:
+                    future.cancel()
+                    raise TimeoutError(f"LLM hard-timeout excedido ({int(hard_timeout)}s)")
+
+                wait_window = min(heartbeat_seconds, max(0.5, remaining))
+                try:
+                    return future.result(timeout=wait_window)
+                except FutureTimeout as exc:
+                    if future.done():
+                        return future.result()
+                    elapsed = time.monotonic() - started_at
+                    if elapsed >= hard_timeout:
+                        future.cancel()
+                        raise TimeoutError(f"LLM hard-timeout excedido ({int(hard_timeout)}s)") from exc
+                    if self.on_attempt:
+                        payload = {
+                            "event": "attempt_heartbeat",
+                            "elapsed_seconds": round(elapsed, 1),
+                            "hard_timeout_seconds": int(hard_timeout),
+                        }
+                        if heartbeat_meta:
+                            payload.update(heartbeat_meta)
+                        try:
+                            self.on_attempt(payload)
+                        except Exception:
+                            pass
 
     def _extract_usage(self, response) -> dict:
         """Extrai métricas de uso do response."""
@@ -290,8 +325,16 @@ class ModelRouter:
                     pass
 
             try:
+                attempt_meta = {
+                    "attempt": attempt_idx + 1,
+                    "max_attempts": len(models_to_try),
+                    "model_id": mid,
+                    "model_string": cfg.model_string,
+                    "provider": cfg.provider,
+                    "fallback": is_fallback,
+                }
                 try:
-                    resp = self._completion_with_hard_timeout(kwargs)
+                    resp = self._completion_with_hard_timeout(kwargs, heartbeat_meta=attempt_meta)
                 except Exception as temp_err:
                     # Alguns modelos (ex.: GPT-5.x) rejeitam temperatura explícita.
                     # Se isso ocorrer, tenta 1x sem temperatura no mesmo modelo antes do fallback.
@@ -302,17 +345,17 @@ class ModelRouter:
                     ):
                         kwargs.pop("temperature", None)
                         try:
-                            resp = self._completion_with_hard_timeout(kwargs)
+                            resp = self._completion_with_hard_timeout(kwargs, heartbeat_meta=attempt_meta)
                         except TypeError as timeout_kw_err:
                             if "request_timeout" in str(timeout_kw_err).lower():
                                 kwargs.pop("request_timeout", None)
-                                resp = self._completion_with_hard_timeout(kwargs)
+                                resp = self._completion_with_hard_timeout(kwargs, heartbeat_meta=attempt_meta)
                             else:
                                 raise
                     else:
                         if isinstance(temp_err, TypeError) and "request_timeout" in str(temp_err).lower():
                             kwargs.pop("request_timeout", None)
-                            resp = self._completion_with_hard_timeout(kwargs)
+                            resp = self._completion_with_hard_timeout(kwargs, heartbeat_meta=attempt_meta)
                         else:
                             raise
                 elapsed_ms = int(time.time() * 1000) - start_ms

@@ -978,11 +978,19 @@ def run_fast_generation(
         llm_prompt_catalog_limit: Optional[int] = None
         timeout_reason: Optional[str] = None
         def on_llm_attempt(meta: dict[str, Any]) -> None:
+            event = str(meta.get("event") or "")
             attempt = int(meta.get("attempt") or 0)
             max_att = int(meta.get("max_attempts") or max_attempts)
             model_label = str(meta.get("model_id") or meta.get("model_string") or "modelo")
             provider = str(meta.get("provider") or "")
             provider_part = f" ({provider})" if provider else ""
+            if event == "attempt_heartbeat":
+                elapsed = float(meta.get("elapsed_seconds") or 0.0)
+                touch_job(
+                    f"Tentativa LLM {attempt}/{max_att}: {model_label}{provider_part} "
+                    f"em execução ({int(elapsed)}s)"
+                )
+                return
             touch_job(f"Tentativa LLM {attempt}/{max_att}: {model_label}{provider_part}")
 
         try:
