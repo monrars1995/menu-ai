@@ -12,7 +12,7 @@ describe("GerarTopBar", () => {
       />,
     );
 
-    expect(screen.getByText("Modelo")).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
     const selectedOption = screen.getByRole("option", { name: "GPT-5.5 (openai)" }) as HTMLOptionElement;
     expect(selectedOption.selected).toBe(true);
   });

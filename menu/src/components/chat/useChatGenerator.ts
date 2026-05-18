@@ -256,11 +256,7 @@ export function useChatGenerator() {
         setState((s) => ({ ...s, loadingLlmModels: false }));
       });
 
-    // Welcome message
-    addAgentMessage(
-      "text",
-      "Ola! Vou te ajudar a gerar um cardapio inteligente. Comece selecionando um contrato existente ou fazendo upload do PDF."
-    );
+    // Fluxo inicia no modal embutido (sem bolha introdutória redundante).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -276,6 +272,29 @@ export function useChatGenerator() {
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------
+
+  function normalizeApiError(error: unknown, fallback: string): string {
+    const raw = (error as any)?.message ? String((error as any).message) : "";
+    if (!raw) return fallback;
+    try {
+      const parsed = JSON.parse(raw);
+      const detail = typeof parsed?.detail === "string" ? parsed.detail.trim() : "";
+      const msg = typeof parsed?.message === "string" ? parsed.message.trim() : "";
+      const value = detail || msg;
+      if (value) {
+        if (value.toLowerCase().includes("unsupported value: 'temperature'")) {
+          return "O modelo selecionado recusou parâmetro de temperatura. Já aplicamos fallback automático; tente novamente.";
+        }
+        return value;
+      }
+    } catch {
+      // ignore parse error
+    }
+    if (raw.toLowerCase().includes("unsupported value: 'temperature'")) {
+      return "O modelo selecionado recusou parâmetro de temperatura. Já aplicamos fallback automático; tente novamente.";
+    }
+    return raw;
+  }
 
   function addAgentMessage(
     type: MessageType,
@@ -666,6 +685,7 @@ export function useChatGenerator() {
           finishContratoAnalysis(contratoId, contratoNome, analise);
         })
         .catch((e) => {
+          const message = normalizeApiError(e, "Erro ao analisar contrato.");
           setState((prev) => ({
             ...prev,
             phase: "error",
@@ -674,8 +694,8 @@ export function useChatGenerator() {
           }));
           updateMessage(progressMsgId, () => ({
             type: "error",
-            content: e.message || "Erro ao analisar contrato.",
-            erro: e.message || "Erro ao analisar contrato.",
+            content: message,
+            erro: message,
           }));
         });
     }
@@ -695,7 +715,6 @@ export function useChatGenerator() {
   function handleInlineUpload(file: File) {
     const s = stateRef.current!;
 
-    addUserMessage(`Enviando: ${file.name}`);
     setState((prev) => ({ ...prev, phase: "uploading", loading: true }));
     const uploadMsgId = addAgentMessage("uploading", `Enviando ${file.name}...`, {
       uploadProgress: 0,
@@ -715,10 +734,11 @@ export function useChatGenerator() {
         }));
       })
       .then((res) => {
-        const { contrato_id, contrato_nome, novo_contrato, analise_status } = res;
+        const { contrato_id, contrato_nome, analise_status } = res;
 
         setState((prev) => ({
           ...prev,
+          messages: prev.messages.filter((msg) => msg.id !== uploadMsgId),
           contratoId: contrato_id,
           contratoNome: contrato_nome,
           contratoAnaliseConfirmada: analise_status === "analisado",
@@ -726,17 +746,10 @@ export function useChatGenerator() {
           loading: false,
           confirmData: null,
         }));
-
-        addAgentMessage(
-          "text",
-          novo_contrato
-            ? `Upload concluído. Contrato "${contrato_nome}" carregado.`
-            : `Upload concluído. Contrato "${contrato_nome}" encontrado na base.`
-        );
       })
       .catch((e) => {
         setState((prev) => ({ ...prev, phase: "error", loading: false }));
-        addAgentMessage("error", e.message || "Erro ao enviar arquivo. Tente novamente.");
+        addAgentMessage("error", normalizeApiError(e, "Erro ao enviar arquivo. Tente novamente."));
       });
   }
 
@@ -884,11 +897,12 @@ export function useChatGenerator() {
         }).catch(console.error);
       })
       .catch((e) => {
+        const message = normalizeApiError(e, "Erro ao iniciar geracao.");
         setState((s) => ({ ...s, phase: "error", loading: false }));
         updateActivePipelineMessage(() => ({
           type: "error",
-          content: `Erro ao iniciar geracao: ${e.message || "Tente novamente."}`,
-          erro: e.message || "Erro ao iniciar geracao",
+          content: `Erro ao iniciar geracao: ${message}`,
+          erro: message,
         }));
         clearActiveGenerationRefs();
       });
@@ -1110,10 +1124,7 @@ export function useChatGenerator() {
       cardapioId: null,
       loading: false,
     }));
-    addAgentMessage(
-      "text",
-      "Ola! Vou te ajudar a gerar um cardapio inteligente. Comece selecionando um contrato existente ou fazendo upload do PDF."
-    );
+    // Reinicia direto no modal de início, sem mensagem introdutória.
   }
 
   function regenerateCardapio() {
@@ -1145,8 +1156,9 @@ export function useChatGenerator() {
         addAgentMessage("text", "Cardápio aprovado. Você já pode baixar ou consultar o registro completo.");
       })
       .catch((e) => {
+        const message = normalizeApiError(e, "Não foi possível aprovar o cardápio.");
         setState((prev) => ({ ...prev, loading: false }));
-        addAgentMessage("error", e.message || "Não foi possível aprovar o cardápio.");
+        addAgentMessage("error", message);
       });
   }
 
@@ -1181,8 +1193,9 @@ export function useChatGenerator() {
         }
       })
       .catch((e) => {
+        const message = normalizeApiError(e, "Erro ao confirmar.");
         setState((prev) => ({ ...prev, loading: false }));
-        addAgentMessage("error", `Erro ao confirmar: ${e.message}`);
+        addAgentMessage("error", `Erro ao confirmar: ${message}`);
       });
   }
 
@@ -1230,8 +1243,9 @@ export function useChatGenerator() {
         );
       })
       .catch((e) => {
+        const message = normalizeApiError(e, "Erro ao enviar mensagem.");
         setState((prev) => ({ ...prev, loading: false }));
-        addAgentMessage("error", `Erro ao enviar mensagem: ${e.message}`);
+        addAgentMessage("error", `Erro ao enviar mensagem: ${message}`);
       });
   }
 

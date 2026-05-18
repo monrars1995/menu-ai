@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileText, Loader2, Sparkles } from "lucide-react";
 import type { ContratoAnalise } from "@/lib/types";
 import type { ChatPhase, ConfirmData } from "@/components/chat";
 import { MealSelector } from "@/components/meal-selector";
@@ -165,11 +165,22 @@ export function GerarFlowModal({
 
         {phase === "upload-confirm" ? (
           <div className="p-6">
-            <h3 className="text-base font-semibold text-ink">Upload concluído</h3>
-            <p className="mt-1 text-sm text-ink-muted-48">
-              Contrato: <span className="font-medium text-ink">{contratoNome || "Sem nome"}</span>
-            </p>
-            <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
+            <div className="rounded-xl border border-hairline bg-surface-soft p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
+                  <CheckCircle2 size={16} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-ink">Upload concluído</h3>
+                  <p className="mt-1 text-sm text-ink-muted-48">Contrato pronto para análise.</p>
+                  <p className="mt-2 flex items-center gap-1.5 truncate text-sm font-medium text-ink" title={contratoNome || "Sem nome"}>
+                    <FileText size={14} className="shrink-0 text-ink-muted-48" />
+                    {contratoNome || "Sem nome"}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={onAnalyzeContrato}
@@ -182,6 +193,7 @@ export function GerarFlowModal({
               >
                 <Sparkles size={14} />
                 Analisar contrato
+                <ArrowRight size={14} />
               </button>
             </div>
           </div>

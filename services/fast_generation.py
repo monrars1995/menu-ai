@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unicodedata
@@ -472,7 +473,15 @@ def _llm_generate(
         step_label="Geração rápida de cardápio",
         step_index=10 if not repair_context else 11,
     )
-    result = router.call(messages=[{"role": "system", "content": system}, {"role": "user", "content": user}], temperature=0.25)
+    fast_temp_raw = (os.getenv("MENUAI_FAST_LLM_TEMPERATURE") or "0.25").strip()
+    try:
+        fast_temp = float(fast_temp_raw)
+    except ValueError:
+        fast_temp = 0.25
+    result = router.call(
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature=fast_temp,
+    )
     if not result.success:
         raise RuntimeError(result.error or "Falha ao chamar LLM no modo rápido.")
     content = _message_content(result.response)

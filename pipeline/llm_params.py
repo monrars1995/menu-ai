@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 def _is_openai_gpt5(model_string: str) -> bool:
     m = (model_string or "").strip().lower()
-    return m.startswith("openai/gpt-5")
+    return m.startswith("openai/gpt-5") or m.startswith("gpt-5")
 
 
 def attach_temperature_if_supported(
@@ -28,4 +28,3 @@ def attach_temperature_if_supported(
     if p == "openai" and _is_openai_gpt5(model_string):
         return
     kwargs["temperature"] = temperature
-

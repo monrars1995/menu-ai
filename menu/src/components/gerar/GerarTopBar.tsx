@@ -1,4 +1,5 @@
 "use client";
+import { Settings2 } from "lucide-react";
 
 type LlmModel = {
   id: string;
@@ -24,13 +25,13 @@ export function GerarTopBar({
 
   return (
     <div className="flex items-center justify-end">
-      <label className="inline-flex items-center gap-2 text-sm text-zinc-700">
-        <span className="text-xs font-medium uppercase tracking-wide text-ink-muted-48">Modelo</span>
+      <label className="inline-flex items-center gap-2 rounded-lg border border-hairline bg-white px-2 py-1.5 text-sm text-zinc-700">
+        <Settings2 size={14} className="text-ink-muted-48" />
         <select
           value={safeValue}
           onChange={(event) => onChangeModel(event.target.value)}
           disabled={loadingModels || !hasModels}
-          className="h-8 min-w-[220px] rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-900"
+          className="h-7 min-w-[220px] border-0 bg-transparent px-1 py-1 text-sm text-zinc-900 focus:outline-none"
         >
           {hasModels ? llmModels.map((model) => (
             <option key={model.id} value={model.id}>

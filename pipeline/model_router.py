@@ -216,7 +216,20 @@ class ModelRouter:
             start_ms = int(time.time() * 1000)
 
             try:
-                resp = completion(**kwargs)
+                try:
+                    resp = completion(**kwargs)
+                except Exception as temp_err:
+                    # Alguns modelos (ex.: GPT-5.x) rejeitam temperatura explícita.
+                    # Se isso ocorrer, tenta 1x sem temperatura no mesmo modelo antes do fallback.
+                    if (
+                        "temperature" in kwargs
+                        and "unsupported value" in str(temp_err).lower()
+                        and "temperature" in str(temp_err).lower()
+                    ):
+                        kwargs.pop("temperature", None)
+                        resp = completion(**kwargs)
+                    else:
+                        raise
                 elapsed_ms = int(time.time() * 1000) - start_ms
                 usage = self._extract_usage(resp)
 

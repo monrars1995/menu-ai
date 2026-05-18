@@ -105,16 +105,7 @@ export function MessageBubble(props: MessageBubbleProps) {
           </div>
         )}
         {type === "upload-ready" && (
-          <UploadReadyCard
-            data={props.uploadData}
-            onAnalyze={() =>
-              props.onAnalyzeContrato?.(
-                props.uploadData?.contratoId,
-                props.uploadData?.contratoNome,
-                false
-              )
-            }
-          />
+          <UploadReadyCard data={props.uploadData} />
         )}
         {type === "pipeline" && (
           <>
@@ -269,10 +260,8 @@ function AnalysisCard({ analysis }: { analysis: ContratoAnalise | null }) {
 
 function UploadReadyCard({
   data,
-  onAnalyze,
 }: {
   data?: UploadData;
-  onAnalyze?: () => void;
 }) {
   if (!data) return null;
   const analiseDisponivel = data.analiseStatus === "analisado";
@@ -300,14 +289,10 @@ function UploadReadyCard({
         </div>
       </div>
 
-      <div className="mt-4 flex justify-end">
-        <button
-          onClick={onAnalyze}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info-border focus-visible:ring-offset-2"
-        >
-          <FileText size={15} />
-          {analiseDisponivel ? "Usar analise" : "Analisar contrato"}
-        </button>
+      <div className="mt-3 text-xs text-ink-muted-48">
+        {analiseDisponivel
+          ? "Análise disponível no fluxo principal."
+          : "Siga no modal para iniciar a análise."}
       </div>
     </div>
   );

@@ -51,14 +51,14 @@ export function Sidebar({
       )}
     >
       {/* Logo */}
-      <div className={cn("flex h-16 items-center border-b border-hairline px-4", collapsed ? "justify-center" : "gap-2.5")}>
+      <div className={cn("flex h-16 items-center border-b border-hairline px-3.5", collapsed ? "justify-center" : "gap-2")}>
         <img src="/isotipo.svg" alt="Menu.AI" className="h-8 w-8" />
-        {!collapsed && <span className="text-base font-medium text-ink">Menu.AI</span>}
+        {!collapsed && <span className="text-base font-semibold tracking-tight text-ink">enu.AI</span>}
         <button
           type="button"
           onClick={onToggleCollapse}
           className={cn(
-            "hidden h-8 w-8 items-center justify-center rounded-md text-ink-muted-48 transition-colors hover:bg-surface-soft hover:text-ink md:flex",
+            "hidden h-8 w-8 items-center justify-center rounded-full border border-hairline bg-white text-ink-muted-48 transition-colors hover:bg-surface-soft hover:text-ink md:flex",
             collapsed ? "" : "ml-auto"
           )}
           title={collapsed ? "Expandir sidebar" : "Recolher sidebar"}
@@ -69,7 +69,7 @@ export function Sidebar({
       </div>
 
       {/* Nav */}
-      <nav className={cn("flex-1 space-y-0.5 overflow-y-auto py-4", collapsed ? "px-2" : "px-3")}>
+      <nav className={cn("flex-1 space-y-1 overflow-y-auto py-4", collapsed ? "px-2" : "px-3")}>
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
           return (
@@ -78,11 +78,11 @@ export function Sidebar({
               href={href}
               onClick={() => closeNav()}
               className={cn(
-                "flex items-center rounded-md py-2 text-sm font-medium",
+                "flex items-center rounded-lg py-2.5 text-sm font-medium",
                 collapsed ? "justify-center px-2" : "gap-2.5 px-3",
                 "transition-all duration-200 ease-out",
                 active
-                  ? "bg-primary-subtle text-ink ring-1 ring-hairline"
+                  ? "bg-surface-soft text-ink ring-1 ring-hairline"
                   : "text-ink-muted-48 hover:bg-surface-soft hover:text-ink hover:translate-x-0.5"
               )}
               title={collapsed ? label : undefined}
@@ -123,7 +123,7 @@ export function Sidebar({
         </button>
         {!collapsed && (
           <div className="mt-2 px-2 text-[10px] text-ink-muted-48/40 select-none">
-            v3.5.2
+            v3.6.5
           </div>
         )}
       </div>
