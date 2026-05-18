@@ -171,6 +171,7 @@ export function useChatGenerator() {
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const didInitRef = useRef(false);
   const streamRetryCountRef = useRef<Record<string, number>>({});
   const pollRetryCountRef = useRef<Record<string, number>>({});
   const activePipelineMessageIdRef = useRef<string | null>(null);
@@ -213,6 +214,9 @@ export function useChatGenerator() {
 
   // Load contracts on mount
   useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+
     api.contratos
       .list()
       .then((r) => {
@@ -711,7 +715,7 @@ export function useChatGenerator() {
         }));
       })
       .then((res) => {
-        const { contrato_id, contrato_nome, novo_contrato, tamanho_kb, analise_status } = res;
+        const { contrato_id, contrato_nome, novo_contrato, analise_status } = res;
 
         setState((prev) => ({
           ...prev,
@@ -724,19 +728,10 @@ export function useChatGenerator() {
         }));
 
         addAgentMessage(
-          "upload-ready",
+          "text",
           novo_contrato
-            ? `Contrato "${contrato_nome}" carregado.`
-            : `Contrato "${contrato_nome}" encontrado na base.`,
-          {
-            uploadData: {
-              contratoId: contrato_id,
-              contratoNome: contrato_nome,
-              novoContrato: novo_contrato,
-              tamanhoKb: tamanho_kb,
-              analiseStatus: analise_status,
-            },
-          }
+            ? `Upload concluído. Contrato "${contrato_nome}" carregado.`
+            : `Upload concluído. Contrato "${contrato_nome}" encontrado na base.`
         );
       })
       .catch((e) => {
