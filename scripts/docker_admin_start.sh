@@ -27,4 +27,8 @@ else:
     raise SystemExit(f"Database did not become ready: {last_error}")
 PY
 
-exec uvicorn admin.main:app --host 0.0.0.0 --port "${ADMIN_PORT:-8001}"
+exec uvicorn admin.main:app \
+  --host 0.0.0.0 \
+  --port "${ADMIN_PORT:-8001}" \
+  --proxy-headers \
+  --forwarded-allow-ips="*"

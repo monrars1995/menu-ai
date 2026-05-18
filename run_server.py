@@ -49,4 +49,6 @@ if __name__ == "__main__":
         reload=False,        # sem reload — evita multiprocessing issue
         log_level="info",
         access_log=True,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )

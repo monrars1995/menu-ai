@@ -55,4 +55,8 @@ if [ "${MENUAI_RUN_SEED:-false}" = "true" ]; then
   python seed_data.py
 fi
 
-exec uvicorn app:app --host 0.0.0.0 --port "${PORT:-8000}"
+exec uvicorn app:app \
+  --host 0.0.0.0 \
+  --port "${PORT:-8000}" \
+  --proxy-headers \
+  --forwarded-allow-ips="*"

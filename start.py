@@ -118,7 +118,14 @@ def main():
     load_dotenv()
     debug = os.getenv("DEBUG", "false").lower() == "true"
     import uvicorn
-    uvicorn.run("app:app", host="0.0.0.0", port=port, reload=debug)
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=port,
+        reload=debug,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
 
 
 if __name__ == "__main__":
