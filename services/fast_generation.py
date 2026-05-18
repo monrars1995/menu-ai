@@ -371,18 +371,75 @@ def _catalog_for_prompt(catalog: dict[str, list[Candidate]], limit: int = 45) ->
             continue
         prompt_catalog[bucket] = [
             {
-                "codigo": c.codigo,
                 "nome": c.nome,
                 "categoria": c.categoria,
                 "custo": round(c.custo, 2),
-                "vegetariana": c.vegetariana,
-                "vegana": c.vegana,
-                "gluten": c.gluten,
-                "lactose": c.lactose,
+                "flags": [
+                    flag
+                    for flag, enabled in (
+                        ("vegetariana", c.vegetariana),
+                        ("vegana", c.vegana),
+                        ("gluten", c.gluten),
+                        ("lactose", c.lactose),
+                    )
+                    if enabled
+                ],
             }
             for c in items[:limit]
         ]
     return prompt_catalog
+
+
+def _resolve_prompt_catalog_limit(dias: int, refeicoes: list[str]) -> int:
+    env_raw = (os.getenv("MENUAI_FAST_PROMPT_CATALOG_LIMIT") or "").strip()
+    if env_raw:
+        try:
+            return max(8, min(60, int(env_raw)))
+        except ValueError:
+            pass
+    rows = max(1, dias * max(1, len(refeicoes)))
+    if rows >= 60:
+        return 28
+    if rows >= 30:
+        return 24
+    return 20
+
+
+def _compact_contract_rules_for_prompt(regras_contrato: dict[str, Any], max_chars: int) -> str:
+    if not isinstance(regras_contrato, dict):
+        return "-"
+
+    def _to_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, (str, int, float, bool)):
+            return [str(value)]
+        if isinstance(value, dict):
+            nome = value.get("nome") if isinstance(value.get("nome"), str) else None
+            return [nome] if nome else [json.dumps(value, ensure_ascii=False)]
+        if isinstance(value, list):
+            out: list[str] = []
+            for item in value:
+                if isinstance(item, dict):
+                    nome = item.get("nome") if isinstance(item.get("nome"), str) else None
+                    out.append(nome or json.dumps(item, ensure_ascii=False))
+                else:
+                    out.append(str(item))
+            return [v for v in out if v and v != "-"]
+        return [str(value)]
+
+    servicos = regras_contrato.get("servicos") or {}
+    necessidades = regras_contrato.get("necessidades") or {}
+    compact = {
+        "num_refeicoes_dia": servicos.get("num_refeicoes_dia") or necessidades.get("num_refeicoes_dia"),
+        "dietas_especiais": _to_list(regras_contrato.get("dietas_especiais")),
+        "proibicoes": _to_list(regras_contrato.get("proibicoes")),
+        "restricoes_alergenos": _to_list(regras_contrato.get("restricoes_alergenos")),
+        "incidencias": regras_contrato.get("incidencias") or {},
+        "gramaturas": regras_contrato.get("gramaturas") or {},
+        "observacoes": regras_contrato.get("observacoes") or necessidades.get("observacoes") or "",
+    }
+    return json.dumps(compact, ensure_ascii=False)[:max_chars]
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -424,7 +481,20 @@ def _llm_generate(
 ) -> tuple[list[dict[str, Any]], str, dict[str, Any]]:
     from pipeline.model_router import ModelRouter
 
-    prompt_catalog = _catalog_for_prompt(catalog)
+    prompt_catalog_limit = _resolve_prompt_catalog_limit(dias, refeicoes)
+    prompt_catalog = _catalog_for_prompt(catalog, limit=prompt_catalog_limit)
+    rules_max_chars_raw = (os.getenv("MENUAI_FAST_PROMPT_RULES_MAX_CHARS") or "2400").strip()
+    catalog_max_chars_raw = (os.getenv("MENUAI_FAST_PROMPT_CATALOG_MAX_CHARS") or "14000").strip()
+    try:
+        rules_max_chars = max(500, int(rules_max_chars_raw))
+    except ValueError:
+        rules_max_chars = 2400
+    try:
+        catalog_max_chars = max(3000, int(catalog_max_chars_raw))
+    except ValueError:
+        catalog_max_chars = 14000
+    contract_rules_prompt = _compact_contract_rules_for_prompt(regras_contrato or {}, rules_max_chars)
+
     system = (
         "Você é nutricionista de refeições coletivas. Gere cardápio operacional em JSON puro. "
         "Use somente pratos existentes no catálogo. Não inclua markdown fora do JSON."
@@ -435,9 +505,9 @@ def _llm_generate(
         f"{', '.join(REFEICAO_LABELS.get(r, r) for r in refeicoes)}.\n"
         f"Custo alvo total por refeição: R$ {target_custo_total:.2f}. "
         f"Custo alvo proteico: R$ {target_custo_proteico:.2f}.\n"
-        f"Regras do contrato:\n{json.dumps(regras_contrato or {}, ensure_ascii=False)[:5000]}\n"
+        f"Regras do contrato (resumo estruturado):\n{contract_rules_prompt}\n"
         f"Restrições adicionais:\n{restricoes_usuario or '-'}\n"
-        f"Catálogo permitido:\n{json.dumps(prompt_catalog, ensure_ascii=False)[:28000]}\n\n"
+        f"Catálogo permitido (amostra otimizada):\n{json.dumps(prompt_catalog, ensure_ascii=False)[:catalog_max_chars]}\n\n"
         "Retorne exatamente este JSON:\n"
         "{\n"
         '  "dias": [\n'
@@ -481,6 +551,7 @@ def _llm_generate(
         "Calibre % Consumo das opções para equilibrar custo: normalmente 70/20/10 ou 80/20/0."
         f"{repair_block}"
     )
+    prompt_chars = len(system) + len(user)
     router = ModelRouter(
         model_id=llm_model,
         job_id=job_id,
@@ -513,6 +584,8 @@ def _llm_generate(
         "provider_used": result.provider_used,
         "attempts": result.attempts,
         "fallback_used": result.is_fallback,
+        "prompt_chars": prompt_chars,
+        "prompt_catalog_limit": prompt_catalog_limit,
     }
 
 
@@ -705,6 +778,8 @@ def _persist_cardapio(
     model_used: Optional[str],
     provider_used: Optional[str],
     timeout_reason: Optional[str],
+    prompt_chars: Optional[int] = None,
+    prompt_catalog_limit: Optional[int] = None,
 ) -> str:
     from database.models import Cardapio, CardapioDia, CardapioRefeicao, JobAgente
     from services.knowledge_base import sync_cardapio_document
@@ -730,6 +805,8 @@ def _persist_cardapio(
             "model_used": model_used or llm_model,
             "provider_used": provider_used,
             "timeout_reason": timeout_reason,
+            "prompt_chars": prompt_chars,
+            "prompt_catalog_limit": prompt_catalog_limit,
             "validation_warnings": warnings[:100],
         },
         updated_at=datetime.utcnow(),
@@ -780,6 +857,22 @@ def _persist_cardapio(
         job_db.progresso = 100
         job_db.resultado_raw = markdown
         job_db.cardapio_id = cardapio.id
+        if isinstance(job_db.parametros_json, dict):
+            params = dict(job_db.parametros_json)
+        else:
+            params = {}
+        params.update(
+            {
+                "duration_seconds": round(duration_seconds, 2),
+                "attempts": attempts,
+                "model_used": model_used or llm_model,
+                "provider_used": provider_used,
+                "timeout_reason": timeout_reason,
+                "prompt_chars": prompt_chars,
+                "prompt_catalog_limit": prompt_catalog_limit,
+            }
+        )
+        job_db.parametros_json = params
         job_db.concluido_em = datetime.utcnow()
         job_db.updated_at = datetime.utcnow()
 
@@ -881,6 +974,8 @@ def run_fast_generation(
         llm_attempts_total = 0
         llm_model_used: Optional[str] = None
         llm_provider_used: Optional[str] = None
+        llm_prompt_chars: Optional[int] = None
+        llm_prompt_catalog_limit: Optional[int] = None
         timeout_reason: Optional[str] = None
         def on_llm_attempt(meta: dict[str, Any]) -> None:
             attempt = int(meta.get("attempt") or 0)
@@ -914,6 +1009,8 @@ def run_fast_generation(
             llm_attempts_total += int(call_meta.get("attempts") or 0)
             llm_model_used = str(call_meta.get("model_used") or llm_model or "")
             llm_provider_used = str(call_meta.get("provider_used") or "")
+            llm_prompt_chars = int(call_meta.get("prompt_chars") or 0) or llm_prompt_chars
+            llm_prompt_catalog_limit = int(call_meta.get("prompt_catalog_limit") or 0) or llm_prompt_catalog_limit
         except Exception as exc:
             warnings.append(f"Geração LLM inicial falhou; usada rotação determinística. Erro: {exc}")
             rows = _deterministic_rows(catalog, dias, refeicoes_norm)
@@ -962,6 +1059,10 @@ def run_fast_generation(
                     llm_model_used = str(repair_meta.get("model_used") or llm_model or "")
                 if not llm_provider_used:
                     llm_provider_used = str(repair_meta.get("provider_used") or "")
+                if not llm_prompt_chars:
+                    llm_prompt_chars = int(repair_meta.get("prompt_chars") or 0) or None
+                if not llm_prompt_catalog_limit:
+                    llm_prompt_catalog_limit = int(repair_meta.get("prompt_catalog_limit") or 0) or None
                 normalized, repair_warnings = _validate_and_normalize(
                     repaired,
                     dias=dias,
@@ -995,6 +1096,8 @@ def run_fast_generation(
             model_used=llm_model_used,
             provider_used=llm_provider_used,
             timeout_reason=timeout_reason,
+            prompt_chars=llm_prompt_chars,
+            prompt_catalog_limit=llm_prompt_catalog_limit,
         )
         logger.info(
             "job_event=%s",
@@ -1007,6 +1110,8 @@ def run_fast_generation(
                     "attempts": llm_attempts_total,
                     "model_used": llm_model_used or llm_model,
                     "provider_used": llm_provider_used,
+                    "prompt_chars": llm_prompt_chars,
+                    "prompt_catalog_limit": llm_prompt_catalog_limit,
                     "warnings_count": len(warnings),
                 },
                 ensure_ascii=False,
@@ -1021,6 +1126,8 @@ def run_fast_generation(
             "attempts": llm_attempts_total,
             "model_used": llm_model_used or llm_model,
             "provider_used": llm_provider_used,
+            "prompt_chars": llm_prompt_chars,
+            "prompt_catalog_limit": llm_prompt_catalog_limit,
         }
     except FastGenerationTimeout as timeout_exc:
         timeout_reason = timeout_exc.timeout_reason

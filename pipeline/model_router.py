@@ -12,6 +12,8 @@ Uso:
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 import json
 import logging
 import os
@@ -117,6 +119,29 @@ class ModelRouter:
         """Resolve configuração completa para um dado model_id."""
         from pipeline.llm_providers import resolve_model_config
         return resolve_model_config(model_id)
+
+    def _completion_with_hard_timeout(self, call_kwargs: dict[str, Any]):
+        """
+        Executa completion com timeout duro local.
+
+        Em alguns provedores o timeout do SDK pode não encerrar a chamada no tempo esperado.
+        Este guard-rail evita bloqueio longo por tentativa.
+        """
+        hard_extra_raw = (os.getenv("MENUAI_LLM_HARD_TIMEOUT_EXTRA_SECONDS") or "8").strip()
+        try:
+            hard_extra = max(2.0, float(hard_extra_raw))
+        except ValueError:
+            hard_extra = 8.0
+
+        base_timeout = float(call_kwargs.get("timeout") or self.timeout_seconds or 55.0)
+        hard_timeout = max(20.0, base_timeout + hard_extra)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(completion, **call_kwargs)
+            try:
+                return future.result(timeout=hard_timeout)
+            except FutureTimeout as exc:
+                future.cancel()
+                raise TimeoutError(f"LLM hard-timeout excedido ({int(hard_timeout)}s)") from exc
 
     def _extract_usage(self, response) -> dict:
         """Extrai métricas de uso do response."""
@@ -266,7 +291,7 @@ class ModelRouter:
 
             try:
                 try:
-                    resp = completion(**kwargs)
+                    resp = self._completion_with_hard_timeout(kwargs)
                 except Exception as temp_err:
                     # Alguns modelos (ex.: GPT-5.x) rejeitam temperatura explícita.
                     # Se isso ocorrer, tenta 1x sem temperatura no mesmo modelo antes do fallback.
@@ -277,17 +302,17 @@ class ModelRouter:
                     ):
                         kwargs.pop("temperature", None)
                         try:
-                            resp = completion(**kwargs)
+                            resp = self._completion_with_hard_timeout(kwargs)
                         except TypeError as timeout_kw_err:
                             if "request_timeout" in str(timeout_kw_err).lower():
                                 kwargs.pop("request_timeout", None)
-                                resp = completion(**kwargs)
+                                resp = self._completion_with_hard_timeout(kwargs)
                             else:
                                 raise
                     else:
                         if isinstance(temp_err, TypeError) and "request_timeout" in str(temp_err).lower():
                             kwargs.pop("request_timeout", None)
-                            resp = completion(**kwargs)
+                            resp = self._completion_with_hard_timeout(kwargs)
                         else:
                             raise
                 elapsed_ms = int(time.time() * 1000) - start_ms
