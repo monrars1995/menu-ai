@@ -15,6 +15,12 @@ from database.connection import get_db
 from database.models import Contrato, Empresa
 from database.schemas import ContratoCreate, ContratoOut, ContratoUpdate
 from routers.auth_supabase import exigir_role, get_usuario_atual
+from services.contract_parser import (
+    SUPPORTED_CONTRACT_EXTENSIONS,
+    analysis_looks_invalid,
+    build_contract_extraction_error,
+    extract_contract_text,
+)
 from services.knowledge_base import sync_contrato_document
 from services.knowledge_hooks import sync_knowledge_safe
 
@@ -175,13 +181,13 @@ async def upload_arquivo(
     db: Session = Depends(get_db),
     usuario=Depends(exigir_role("super_admin", "admin", "nutricionista")),
 ):
-    """Upload do PDF ou XLSX do contrato."""
+    """Upload do documento contratual (PDF/XLSX/DOCX/TXT/MD/RTF)."""
     contrato = db.query(Contrato).filter(Contrato.id == contrato_id).first()
     if not contrato:
         raise HTTPException(status_code=404, detail="Contrato não encontrado.")
 
     ext = Path(file.filename or "").suffix.lower()
-    if ext not in (".pdf", ".xlsx", ".xls"):
+    if ext not in SUPPORTED_CONTRACT_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Formato '{ext}' não suportado.")
 
     content = await file.read()
@@ -244,7 +250,7 @@ def obter_analise(
             except Exception:
                 pass
 
-    if not regras:
+    if not regras or analysis_looks_invalid(regras):
         return {"contrato_id": contrato_id, "status": "nao_analisado", "mensagem": "Nenhuma análise encontrada. Execute a geração de cardápio para que o agente Analista extraia as regras."}
 
     return _contrato_analise_payload(contrato, regras)
@@ -265,8 +271,11 @@ def analisar_contrato(
         raise HTTPException(status_code=403, detail="Acesso negado.")
     if not contrato.arquivo_path:
         raise HTTPException(status_code=400, detail="Contrato sem arquivo carregado.")
+    extraction = extract_contract_text(contrato.arquivo_path)
+    if not extraction.ok or extraction.total_chars < 300:
+        raise HTTPException(status_code=422, detail=build_contract_extraction_error(extraction))
 
-    if contrato.regras_json and not body.force:
+    if contrato.regras_json and not body.force and not analysis_looks_invalid(contrato.regras_json):
         return _contrato_analise_payload(contrato, contrato.regras_json)
 
     try:
@@ -299,6 +308,14 @@ def analisar_contrato(
         regras = {"texto": str(regras)}
     if regras.get("erro"):
         raise HTTPException(status_code=502, detail=f"Falha ao analisar contrato: {regras.get('erro')}")
+    if analysis_looks_invalid(regras):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "A análise retornou conteúdo sem base documental. "
+                "Reenvie o arquivo e execute a análise novamente."
+            ),
+        )
 
     contrato.regras_json = regras
     contrato.gramaturas_json = regras.get("gramaturas", contrato.gramaturas_json)

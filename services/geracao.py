@@ -159,7 +159,7 @@ def executar_crew(
                 pass
 
         if not contrato_path:
-            for ext in (".pdf", ".xlsx", ".xls"):
+            for ext in (".pdf", ".xlsx", ".xls", ".docx", ".txt", ".md", ".rtf"):
                 cand = upload_dir / f"contrato{ext}"
                 if cand.exists():
                     contrato_path = str(cand)

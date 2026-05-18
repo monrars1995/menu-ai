@@ -412,12 +412,12 @@ function UploadButton({ onUpload }: { onUpload?: (file: File) => void }) {
         className="flex items-center gap-2 rounded-lg border border-hairline bg-white px-4 py-2 text-sm font-medium text-ink transition-all hover:bg-surface-soft hover:shadow-sm"
       >
         <Upload size={14} />
-        Upload PDF
+        Upload documento
       </button>
       <input
         ref={fileRef}
         type="file"
-        accept=".pdf,.xlsx,.xls"
+        accept=".pdf,.xlsx,.xls,.docx,.txt,.md,.rtf"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

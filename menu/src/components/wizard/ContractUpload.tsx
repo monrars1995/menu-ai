@@ -43,13 +43,13 @@ export function ContractUpload({ onSelect, onUpload }: ContractUploadProps) {
           <input
             type="file"
             className="hidden"
-            accept=".pdf,.xls,.xlsx"
+            accept=".pdf,.xls,.xlsx,.docx,.txt,.md,.rtf"
             onChange={handleFileChange}
           />
         </label>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-ink">Enviar contrato</p>
-          <p className="text-xs text-ink-muted-48">PDF/XLSX para análise automática</p>
+          <p className="text-xs text-ink-muted-48">PDF, XLSX, DOCX ou TXT para análise automática</p>
         </div>
       </div>
 

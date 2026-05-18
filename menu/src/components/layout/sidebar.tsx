@@ -123,7 +123,7 @@ export function Sidebar({
         </button>
         {!collapsed && (
           <div className="mt-2 px-2 text-[10px] text-ink-muted-48/40 select-none">
-            v3.6.6
+            v3.6.7
           </div>
         )}
       </div>

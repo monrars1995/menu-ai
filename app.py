@@ -28,7 +28,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.5"
+APP_VERSION = "3.6.7"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -526,14 +526,17 @@ async def gerar_cardapio_com_upload(
 
     - Deduplica por SHA256 do arquivo
     - Cria contrato automaticamente se novo
+    - Regrava arquivo físico mesmo em contratos deduplicados (importante após restart/deploy)
     - Não dispara análise nem geração; o frontend confirma o upload antes da análise
     """
     import hashlib
 
+    from services.contract_parser import SUPPORTED_CONTRACT_EXTENSIONS, analysis_looks_invalid
+
     # 1. Validar extensão
     ext = Path(file.filename or "").suffix.lower()
-    if ext not in (".pdf", ".xlsx", ".xls"):
-        raise HTTPException(400, f"Formato '{ext}' não suportado. Use PDF ou Excel.")
+    if ext not in SUPPORTED_CONTRACT_EXTENSIONS:
+        raise HTTPException(400, f"Formato '{ext}' não suportado. Use PDF, Excel, DOCX ou TXT.")
 
     # 2. Ler conteúdo e calcular hash
     content = await file.read()
@@ -574,13 +577,13 @@ async def gerar_cardapio_com_upload(
                 contrato_id = contrato.id
                 contrato_nome = contrato.nome
                 novo_contrato = False
-                if not contrato.arquivo_path:
-                    upload_subdir = UPLOAD_DIR / "contratos"
-                    upload_subdir.mkdir(parents=True, exist_ok=True)
-                    dest = upload_subdir / f"{file_hash}{ext}"
-                    dest.write_bytes(content)
-                    contrato.arquivo_path = str(dest)
-                    db.commit()
+                upload_subdir = UPLOAD_DIR / "contratos"
+                upload_subdir.mkdir(parents=True, exist_ok=True)
+                dest = upload_subdir / f"{file_hash}{ext}"
+                # Garante que o arquivo exista fisicamente mesmo após restart/deploy.
+                dest.write_bytes(content)
+                contrato.arquivo_path = str(dest)
+                db.commit()
             else:
                 contrato_id = str(model_uuid())
                 upload_subdir = UPLOAD_DIR / "contratos"
@@ -609,7 +612,7 @@ async def gerar_cardapio_com_upload(
             except Exception:
                 pass
 
-            analise_status = "analisado" if contrato.regras_json else "pendente"
+            analise_status = "analisado" if (contrato.regras_json and not analysis_looks_invalid(contrato.regras_json)) else "pendente"
         finally:
             db.close()
     else:

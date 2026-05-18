@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
 
-import pandas as pd
+from services.contract_parser import build_contract_extraction_error, extract_contract_text
 from tools.compat import tool
 
 # ============================================================
@@ -159,10 +159,10 @@ def calcular_custo_prato(
 # 2. CONTRATO — Leitura e persistência de regras
 # ============================================================
 
-@tool("Ler Contrato (Arquivo PDF ou XLSX)")
+@tool("Ler Contrato (Arquivo PDF/XLSX/DOCX/TXT)")
 def ler_regras_contrato(consulta: str = "") -> str:
     """
-    Lê o arquivo de contrato carregado (PDF ou XLSX) e retorna o texto completo,
+    Lê o arquivo de contrato/proposta carregado (PDF/XLSX/DOCX/TXT/MD/RTF) e retorna o texto completo,
     priorizando as seções com regras de cardápio, gramaturas, frequências e restrições.
 
     Use para a análise INICIAL do contrato.
@@ -184,41 +184,11 @@ def ler_regras_contrato(consulta: str = "") -> str:
     ]
 
     try:
-        texto_bruto = ""
-
-        if CONTRATO_PATH:
-            path = Path(CONTRATO_PATH)
-            if path.exists():
-                ext = path.suffix.lower()
-                if ext == ".pdf":
-                    try:
-                        import pdfplumber
-                        paginas = []
-                        with pdfplumber.open(path) as pdf:
-                            total_pgs = len(pdf.pages)
-                            for i, page in enumerate(pdf.pages):
-                                texto_pg = page.extract_text() or ""
-                                if texto_pg.strip():
-                                    paginas.append(f"[Página {i+1}/{total_pgs}]\n{texto_pg}")
-                        texto_bruto = "\n\n".join(paginas)
-                    except Exception as e:
-                        texto_bruto = f"[Erro ao ler PDF: {e}]"
-                elif ext in (".xlsx", ".xls"):
-                    try:
-                        dfs = pd.read_excel(path, sheet_name=None)
-                        partes = []
-                        for sheet, df in dfs.items():
-                            partes.append(f"--- Aba: {sheet} ---")
-                            partes.append(df.to_string(index=False))
-                        texto_bruto = "\n".join(partes)
-                    except Exception as e:
-                        texto_bruto = f"[Erro ao ler XLSX: {e}]"
-
-        if not texto_bruto:
-            texto_bruto = "[Nenhum arquivo de contrato carregado]"
+        extraction = extract_contract_text(CONTRATO_PATH)
+        texto_bruto = extraction.text
 
         # Extração inteligente: prioriza parágrafos/seções com palavras-chave
-        if len(texto_bruto) > LIMITE_TOTAL and texto_bruto != "[Nenhum arquivo de contrato carregado]":
+        if len(texto_bruto) > LIMITE_TOTAL:
             linhas = texto_bruto.split("\n")
             relevantes = []
             outros = []
@@ -241,7 +211,14 @@ def ler_regras_contrato(consulta: str = "") -> str:
             )
             resultado = resultado[:LIMITE_TOTAL]
         else:
-            resultado = texto_bruto[:LIMITE_TOTAL]
+            resultado = (texto_bruto or "")[:LIMITE_TOTAL]
+
+        if not extraction.ok or not resultado.strip():
+            return (
+                "[ERRO_CONTRATO_SEM_TEXTO]\n"
+                + build_contract_extraction_error(extraction)
+                + "\nNao aplique defaults. Solicite reenvio do documento."
+            )
 
         if RESTRICOES_USUARIO.strip():
             resultado += "\n\n=== RESTRIÇÕES TEXTUAIS DO CLIENTE ===\n" + RESTRICOES_USUARIO
@@ -252,7 +229,14 @@ def ler_regras_contrato(consulta: str = "") -> str:
             f"\nCusto PROTEÍCO alvo: R$ {TARGET_CUSTO_PROTEICO:.2f}/pessoa"
             f"\nPeríodo: {DIAS} dias"
             f"\nTotal de caracteres lidos do contrato: {len(texto_bruto):,}"
+            f"\nFormato: {extraction.ext or 'desconhecido'}"
+            f"\nExtrator: {extraction.parser}"
+            f"\nPaginas com texto: {extraction.pages_with_text}/{extraction.pages_total}"
+            f"\nAbas (quando planilha): {extraction.sheets_total}"
+            f"\nKeywords detectadas: {extraction.keywords_found}"
         )
+        if extraction.warning:
+            resultado += f"\nAviso de extração: {extraction.warning}"
 
         return resultado
 
