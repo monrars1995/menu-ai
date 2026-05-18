@@ -494,8 +494,8 @@ export function useChatGenerator() {
     const budget = Number.isFinite(timeoutBudgetSeconds)
       ? Math.max(60, Number(timeoutBudgetSeconds))
       : DEFAULT_TIMEOUT_BUDGET_SECONDS;
-    const timeoutMs = Math.max(120000, Math.min(280000, Math.floor(budget * 1000 * 0.88)));
-    const warningMs = Math.max(30000, Math.min(90000, Math.floor(timeoutMs * 0.35)));
+    const timeoutMs = Math.max(180000, Math.min(420000, Math.floor(budget * 1000) + 60000));
+    const warningMs = Math.max(45000, Math.min(120000, Math.floor(timeoutMs * 0.3)));
     staleTimeoutMsRef.current = timeoutMs;
     staleWarningMsRef.current = warningMs;
   }
@@ -1132,6 +1132,7 @@ export function useChatGenerator() {
         .status(jobId)
         .then((snapshot) => {
           pollRetryCountRef.current[jobId] = 0;
+          lastRealtimeUpdateRef.current = Date.now();
           const progress = Number(snapshot?.progress ?? 0) || 0;
           const status = String(snapshot?.status || "");
           const erro = snapshot?.error;
@@ -1147,6 +1148,7 @@ export function useChatGenerator() {
 
           const backendLastUpdateAt = snapshot?.last_update_at ? Date.parse(String(snapshot.last_update_at)) : NaN;
           const timeoutBudgetSeconds = Number(snapshot?.timeout_budget_seconds || DEFAULT_TIMEOUT_BUDGET_SECONDS);
+          const elapsedSeconds = Number(snapshot?.elapsed_seconds || 0);
           applyStaleThresholdFromBudget(timeoutBudgetSeconds);
           if (status === "executando" || status === "iniciando") {
             const staleByBackend = Number.isFinite(backendLastUpdateAt)
@@ -1155,7 +1157,9 @@ export function useChatGenerator() {
             const staleBySignature = lastBackendProgressAtRef.current
               ? Date.now() - lastBackendProgressAtRef.current
               : 0;
-            if (Math.max(staleByBackend, staleBySignature) > staleTimeoutMsRef.current) {
+            const totalElapsedMs = elapsedSeconds > 0 ? elapsedSeconds * 1000 : 0;
+            const effectiveElapsedMs = Math.max(totalElapsedMs, staleByBackend, staleBySignature);
+            if (effectiveElapsedMs > staleTimeoutMsRef.current) {
               failActiveGeneration(
                 "Geração parada no backend por tempo excessivo. Tente novamente, troque o modelo ou reduza os dias.",
                 "timeout_budget_exceeded"
@@ -1245,8 +1249,8 @@ export function useChatGenerator() {
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        if (data.type === "ping") return;
         lastRealtimeUpdateRef.current = Date.now();
+        if (data.type === "ping") return;
         streamRetryCountRef.current[jobId] = 0;
         if (activeJobIdRef.current && activeJobIdRef.current !== jobId) {
           return;
