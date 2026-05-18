@@ -109,6 +109,7 @@ export interface ChatState {
   refeicoes: string[];
   custoAlvo: string;
   restricoes: string;
+  confirmData: ConfirmData | null;
   llmModel: string;
   llmModels: LlmModel[];
   loadingLlmModels: boolean;
@@ -162,14 +163,6 @@ function buildRestricoesPayload(analise: ContratoAnalise | null, adicionais: str
   return finalTxt || undefined;
 }
 
-function getPerguntaRestricoes(analise: ContratoAnalise | null): string {
-  const fixas = buildContratoRestricoesFixas(analise);
-  if (fixas) {
-    return "As restricoes do contrato ja serao aplicadas automaticamente. Deseja adicionar alguma restricao extra? (opcional)";
-  }
-  return "Ha alguma restricao adicional? (ex: sem gluten, vegano - pode pular)";
-}
-
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -198,6 +191,7 @@ export function useChatGenerator() {
     refeicoes: DEFAULT_REFEICOES,
     custoAlvo: "",
     restricoes: "",
+    confirmData: null,
     llmModel: "",
     llmModels: [],
     loadingLlmModels: true,
@@ -556,15 +550,13 @@ export function useChatGenerator() {
       phase: "config-days",
       loadingAnalise: false,
       loading: false,
+      confirmData: null,
     }));
     addAgentMessage(
       "analysis",
       `Analisei o contrato "${nome}". Aqui esta o que entendi:`,
       { analysis: analise }
     );
-    setTimeout(() => {
-      addAgentMessage("text", "Para quantos dias deseja o cardapio?");
-    }, 400);
   }
 
   function analyzeContrato(id?: string, nome?: string, force = false) {
@@ -680,6 +672,7 @@ export function useChatGenerator() {
           contratoAnaliseConfirmada: analise_status === "analisado",
           phase: "upload-confirm",
           loading: false,
+          confirmData: null,
         }));
 
         addAgentMessage(
@@ -707,10 +700,7 @@ export function useChatGenerator() {
   function setDias(value: number) {
     const clamped = Math.min(30, Math.max(1, value));
     addUserMessage(`${clamped} dias`);
-    setState((s) => ({ ...s, dias: clamped, phase: "config-meals" }));
-    setTimeout(() => {
-      addAgentMessage("text", "Quais refeicoes deseja incluir?");
-    }, 400);
+    setState((s) => ({ ...s, dias: clamped, phase: "config-meals", confirmData: null }));
   }
 
   function setRefeicoes(value: string[]) {
@@ -729,13 +719,7 @@ export function useChatGenerator() {
       })
       .join(", ");
     addUserMessage(`Refeicoes: ${labels}`);
-    setState((s) => ({ ...s, refeicoes: value, phase: "config-cost" }));
-    setTimeout(() => {
-      addAgentMessage(
-        "text",
-        "Qual o custo alvo diario em R$? (opcional - pode pular)"
-      );
-    }, 400);
+    setState((s) => ({ ...s, refeicoes: value, phase: "config-cost", confirmData: null }));
   }
 
   function setCustoAlvo(value: string) {
@@ -744,11 +728,7 @@ export function useChatGenerator() {
     } else {
       addUserMessage(`Custo alvo: R$ ${value}`);
     }
-    setState((s) => ({ ...s, custoAlvo: value, phase: "config-restrictions" }));
-    setTimeout(() => {
-      const s = stateRef.current!;
-      addAgentMessage("text", getPerguntaRestricoes(s.contratoAnalise));
-    }, 400);
+    setState((s) => ({ ...s, custoAlvo: value, phase: "config-restrictions", confirmData: null }));
   }
 
   function setRestricoes(value: string) {
@@ -757,9 +737,7 @@ export function useChatGenerator() {
     } else {
       addUserMessage(`Restricoes: ${value}`);
     }
-    setState((s) => ({ ...s, restricoes: value, phase: "confirm" }));
-    setTimeout(() => {
-      const s = stateRef.current!;
+    setState((s) => {
       const contratoNome =
         s.contratos.find((c) => c.id === s.contratoId)?.nome ||
         "Nenhum contrato";
@@ -779,12 +757,8 @@ export function useChatGenerator() {
           s.llmModel ||
           undefined,
       };
-      addAgentMessage(
-        "confirm",
-        "Pronto! Confira os parametros antes de gerar:",
-        { confirmData }
-      );
-    }, 400);
+      return { ...s, restricoes: value, phase: "confirm", confirmData };
+    });
   }
 
   function handleSkipCost() {
@@ -796,8 +770,7 @@ export function useChatGenerator() {
   }
 
   function handleAdjust() {
-    setState((s) => ({ ...s, phase: "config-days" }));
-    addAgentMessage("text", "Para quantos dias deseja o cardapio?");
+    setState((s) => ({ ...s, phase: "config-days", confirmData: null }));
   }
 
   function startGeneration() {
@@ -1083,6 +1056,7 @@ export function useChatGenerator() {
       refeicoes: DEFAULT_REFEICOES,
       custoAlvo: "",
       restricoes: "",
+      confirmData: null,
       jobId: null,
       sessaoId: null,
       cardapioId: null,
