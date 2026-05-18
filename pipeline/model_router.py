@@ -523,6 +523,12 @@ class ModelRouter:
                         self._provider_backoff_seconds(cfg.provider),
                         reason="rate_limit",
                     )
+                elif isinstance(retriable, (Timeout, TimeoutError)):
+                    self._mark_provider_backoff(
+                        cfg.provider,
+                        self._provider_backoff_seconds(cfg.provider),
+                        reason="timeout",
+                    )
                 self._structured_log(
                     "attempt_retriable_error",
                     attempt=attempt_idx + 1,
