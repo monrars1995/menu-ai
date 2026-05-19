@@ -7,8 +7,9 @@ Create Date: 2026-05-18 12:20:00.000000
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -18,19 +19,21 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-agent_slot_type_enum = sa.Enum(
+agent_slot_type_enum = postgresql.ENUM(
     "contract_analyzer",
     "generator",
     "reviewer",
     "copilot",
     name="agent_slot_type_enum",
+    create_type=False,
 )
 
-agent_version_status_enum = sa.Enum(
+agent_version_status_enum = postgresql.ENUM(
     "draft",
     "published",
     "archived",
     name="agent_version_status_enum",
+    create_type=False,
 )
 
 
