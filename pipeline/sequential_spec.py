@@ -255,12 +255,14 @@ def build_steps(crew) -> List[PipelineStep]:
     )
     users = [u1, u2, u3, u4, u5, u6, u7]
     labels = list(_PIPELINE_STEP_LABELS)
+    system_overrides = getattr(crew, "step_system_overrides", {}) or {}
     steps: List[PipelineStep] = []
-    for lab, user, tols in zip(labels, users, toolsets, strict=True):
+    for idx, (lab, user, tols) in enumerate(zip(labels, users, toolsets, strict=True)):
+        system = system_overrides.get(idx) or _system_short(lab, d, tc, tcp, fonte, ref_block)
         steps.append(
             PipelineStep(
                 label=lab,
-                system=_system_short(lab, d, tc, tcp, fonte, ref_block),
+                system=system,
                 user=user,
                 tools=tols,
             )

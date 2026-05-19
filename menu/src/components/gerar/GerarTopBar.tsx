@@ -43,7 +43,7 @@ export function GerarTopBar({
       </span>
       <label className="inline-flex items-center gap-2 rounded-lg border border-hairline bg-white px-2 py-1.5 text-sm text-zinc-700">
         <Settings2 size={14} className="text-ink-muted-48" />
-        <span className="text-xs font-medium text-ink-muted-48">Gerador</span>
+        <span className="text-xs font-medium text-ink-muted-48">Agente Gerador</span>
         <select
           value={generatorValue}
           onChange={(event) => onChangeModel(event.target.value)}
@@ -57,13 +57,13 @@ export function GerarTopBar({
             </option>
           )) : (
             <option value="">
-              {loadingModels ? "Carregando modelos..." : "Modelos indisponíveis"}
+              {loadingModels ? "Carregando agentes..." : "Agentes indisponíveis"}
             </option>
           )}
         </select>
       </label>
       <label className="inline-flex items-center gap-2 rounded-lg border border-hairline bg-white px-2 py-1.5 text-sm text-zinc-700">
-        <span className="text-xs font-medium text-ink-muted-48">Revisor</span>
+        <span className="text-xs font-medium text-ink-muted-48">Agente Revisor</span>
         <select
           value={reviewerValue}
           onChange={(event) => onChangeReviewModel(event.target.value)}

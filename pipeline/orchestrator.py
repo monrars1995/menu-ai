@@ -30,6 +30,7 @@ class MenuOrchestrator:
         step_callback: Optional[Callable] = None,
         db_disponivel: bool = False,
         llm_model_id: Optional[str] = None,
+        step_system_overrides: Optional[dict[int, str]] = None,
     ):
         self.contrato_path = contrato_path
         self.dias = dias
@@ -42,6 +43,7 @@ class MenuOrchestrator:
         self.step_callback = step_callback
         self.db_disponivel = db_disponivel
         self.llm_model_id = llm_model_id
+        self.step_system_overrides = dict(step_system_overrides or {})
         self.llm_model_label = None
         self.llm = None  # legado: execução via pipeline.llm_litellm
 

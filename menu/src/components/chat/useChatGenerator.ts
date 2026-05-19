@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import api, { API_BASE } from "@/lib/api";
-import type { Contrato, ContratoAnalise, Cardapio, LlmModel } from "@/lib/types";
+import api from "@/lib/api";
+import type {
+  AgentsRuntimePayload,
+  Cardapio,
+  Contrato,
+  ContratoAnalise,
+  LlmModel,
+  RuntimeAgentOption,
+} from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -134,6 +141,8 @@ export interface ChatState {
   generationModels: LlmModel[];
   reviewModels: LlmModel[];
   loadingLlmModels: boolean;
+  contractAnalyzerAgent?: LlmModel | null;
+  copilotAgent?: LlmModel | null;
   jobId: string | null;
   sessaoId: string | null;
   cardapioId: string | null;
@@ -143,11 +152,28 @@ export interface ChatState {
 }
 
 const DEFAULT_REFEICOES = ["almoco", "jantar"];
-const LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
-const REVIEW_LLM_MODEL_STORAGE_KEY = "menuai_review_llm_model";
+const GENERATOR_AGENT_STORAGE_KEY = "menuai_generator_agent";
+const REVIEWER_AGENT_STORAGE_KEY = "menuai_reviewer_agent";
+const LEGACY_LLM_MODEL_STORAGE_KEY = "menuai_llm_model";
+const LEGACY_REVIEW_LLM_MODEL_STORAGE_KEY = "menuai_review_llm_model";
 const DEFAULT_TIMEOUT_BUDGET_SECONDS = 300;
 const STALE_SYNC_WARNING_MS = 45000;
 const STALE_SYNC_TIMEOUT_MS = 240000;
+
+function agentOptionToDisplay(agent: RuntimeAgentOption): LlmModel {
+  return {
+    id: agent.profile_id,
+    label: agent.name,
+    provider: agent.provider_model_id,
+    description: agent.description || agent.provider_label || agent.provider_model_id,
+  };
+}
+
+function lookupAgentLabel(options: LlmModel[], id?: string | null, fallback?: string | null): string | undefined {
+  const normalized = String(id || "").trim();
+  if (!normalized) return fallback ? String(fallback) : undefined;
+  return options.find((option) => option.id === normalized)?.label || fallback || normalized;
+}
 
 function _cleanList(items?: unknown[] | Record<string, unknown> | null): string[] {
   if (!items) return [];
@@ -250,6 +276,8 @@ export function useChatGenerator() {
     generationModels: [],
     reviewModels: [],
     loadingLlmModels: true,
+    contractAnalyzerAgent: null,
+    copilotAgent: null,
     jobId: null,
     sessaoId: null,
     cardapioId: null,
@@ -290,24 +318,27 @@ export function useChatGenerator() {
         setState((s) => ({ ...s, loadingContratos: false }));
       });
 
-    api.llmModels()
+    api.agentsRuntime("gerar")
       .then((payload) => {
-        const models = (payload.models || []) as LlmModel[];
-        const generationModels = ((payload.generation_models || []) as LlmModel[]).length
-          ? (payload.generation_models as LlmModel[])
-          : models.filter((model) => model.supports_generation !== false);
-        const reviewModels = ((payload.review_models || []) as LlmModel[]).length
-          ? (payload.review_models as LlmModel[])
-          : models.filter((model) => model.supports_review === true);
-        const defaultModel = generationModels.length ? String(payload.default || generationModels[0]?.id || "") : "";
+        const runtime = payload as AgentsRuntimePayload;
+        const generationModels = (runtime.generator_agents || []).map(agentOptionToDisplay);
+        const reviewModels = (runtime.reviewer_agents || []).map(agentOptionToDisplay);
+        const modelsMap = new Map<string, LlmModel>();
+        for (const option of [...generationModels, ...reviewModels]) {
+          modelsMap.set(option.id, option);
+        }
+        const models = Array.from(modelsMap.values());
+        const defaultModel = generationModels.length ? String(generationModels[0]?.id || "") : "";
         const defaultReviewModel = reviewModels.length ? String(reviewModels[0]?.id || "") : "";
         const savedModel =
           typeof window !== "undefined"
-            ? window.localStorage.getItem(LLM_MODEL_STORAGE_KEY)
+            ? window.localStorage.getItem(GENERATOR_AGENT_STORAGE_KEY) ||
+              window.localStorage.getItem(LEGACY_LLM_MODEL_STORAGE_KEY)
             : null;
         const savedReviewModel =
           typeof window !== "undefined"
-            ? window.localStorage.getItem(REVIEW_LLM_MODEL_STORAGE_KEY)
+            ? window.localStorage.getItem(REVIEWER_AGENT_STORAGE_KEY) ||
+              window.localStorage.getItem(LEGACY_REVIEW_LLM_MODEL_STORAGE_KEY)
             : null;
         const selected =
           savedModel && generationModels.some((m) => m.id === savedModel)
@@ -318,10 +349,10 @@ export function useChatGenerator() {
             ? savedReviewModel
             : defaultReviewModel;
         if (selected && typeof window !== "undefined") {
-          window.localStorage.setItem(LLM_MODEL_STORAGE_KEY, selected);
+          window.localStorage.setItem(GENERATOR_AGENT_STORAGE_KEY, selected);
         }
         if (selectedReviewer && typeof window !== "undefined") {
-          window.localStorage.setItem(REVIEW_LLM_MODEL_STORAGE_KEY, selectedReviewer);
+          window.localStorage.setItem(REVIEWER_AGENT_STORAGE_KEY, selectedReviewer);
         }
         setState((s) => ({
           ...s,
@@ -330,6 +361,12 @@ export function useChatGenerator() {
           reviewModels,
           llmModel: selected,
           reviewLlmModel: selectedReviewer,
+          contractAnalyzerAgent: runtime.contract_analyzer_binding
+            ? agentOptionToDisplay(runtime.contract_analyzer_binding)
+            : null,
+          copilotAgent: runtime.copilot_binding
+            ? agentOptionToDisplay(runtime.copilot_binding)
+            : null,
           loadingLlmModels: false,
         }));
       })
@@ -362,17 +399,17 @@ export function useChatGenerator() {
       const detail = typeof parsed?.detail === "string" ? parsed.detail.trim() : "";
       const msg = typeof parsed?.message === "string" ? parsed.message.trim() : "";
       const value = detail || msg;
-      if (value) {
-        if (value.toLowerCase().includes("unsupported value: 'temperature'")) {
-          return "O modelo selecionado recusou parâmetro de temperatura. Já aplicamos fallback automático; tente novamente.";
+        if (value) {
+          if (value.toLowerCase().includes("unsupported value: 'temperature'")) {
+            return "O agente selecionado recusou parâmetro de temperatura no modelo configurado. Ajuste o agente ou tente novamente.";
+          }
+          return value;
         }
-        return value;
-      }
     } catch {
       // ignore parse error
     }
     if (raw.toLowerCase().includes("unsupported value: 'temperature'")) {
-      return "O modelo selecionado recusou parâmetro de temperatura. Já aplicamos fallback automático; tente novamente.";
+      return "O agente selecionado recusou parâmetro de temperatura no modelo configurado. Ajuste o agente ou tente novamente.";
     }
     return raw;
   }
@@ -559,7 +596,7 @@ export function useChatGenerator() {
 
       if (staleMs >= timeoutMs) {
         failActiveGeneration(
-          "O servidor não atualizou o progresso dentro do tempo esperado. Tente novamente, troque o modelo ou reduza os dias.",
+          "O servidor não atualizou o progresso dentro do tempo esperado. Tente novamente, troque o agente ou reduza os dias.",
           "timeout_budget_exceeded"
         );
         return;
@@ -668,8 +705,12 @@ export function useChatGenerator() {
   function resultDataFromCardapio(jobId: string, cardapio: Cardapio): ResultData {
     const s = stateRef.current!;
     const params = (cardapio.parametros_json || {}) as Record<string, unknown>;
-    const generatorModelId = String(params.generator_model_used || params.model_used || s.llmModel || "");
-    const reviewModelId = String(params.review_model_used || s.reviewLlmModel || "");
+    const generatorAgentId = String(params.generator_agent_id || s.llmModel || "");
+    const reviewAgentId = String(params.reviewer_agent_id || s.reviewLlmModel || "");
+    const generatorBinding = ((params.agent_bindings || {}) as Record<string, Record<string, unknown>>).generator || {};
+    const reviewBinding = ((params.agent_bindings || {}) as Record<string, Record<string, unknown>>).reviewer || {};
+    const generatorModelId = String(params.generator_model_used || params.model_used || generatorBinding.provider_model_id || "");
+    const reviewModelId = String(params.review_model_used || reviewBinding.provider_model_id || "");
     return {
       jobId,
       cardapioId: cardapio.id,
@@ -679,14 +720,16 @@ export function useChatGenerator() {
       status: cardapio.status,
       preview: buildCardapioPreview(cardapio),
       warnings: validationWarnings(cardapio),
-      generatorModelLabel:
-        s.llmModels.find((model) => model.id === generatorModelId)?.label ||
-        generatorModelId ||
-        undefined,
-      reviewModelLabel:
-        s.llmModels.find((model) => model.id === reviewModelId)?.label ||
-        reviewModelId ||
-        undefined,
+      generatorModelLabel: lookupAgentLabel(
+        s.llmModels,
+        generatorAgentId,
+        String(generatorBinding.profile_name || generatorModelId || ""),
+      ),
+      reviewModelLabel: lookupAgentLabel(
+        s.llmModels,
+        reviewAgentId,
+        String(reviewBinding.profile_name || reviewModelId || ""),
+      ),
       reviewStatus: params.review_status ? String(params.review_status) : undefined,
       reviewSummary: params.review_summary ? String(params.review_summary) : undefined,
       reviewWarnings: Array.isArray(params.review_warnings)
@@ -902,7 +945,7 @@ export function useChatGenerator() {
       );
 
       api.contratos
-        .analisar(contratoId, { llm_model: s.llmModel || undefined, force })
+        .analisar(contratoId, { force })
         .then((analise) => {
           updateMessage(progressMsgId, () => ({
             pipelineStep: 7,
@@ -953,8 +996,8 @@ export function useChatGenerator() {
         refeicoes: s.refeicoes,
         target_custo_total: s.custoAlvo ? parseFloat(s.custoAlvo) : undefined,
         restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
-        llm_model: s.llmModel || undefined,
-        review_llm_model: s.reviewLlmModel || undefined,
+        generator_agent_id: s.llmModel || undefined,
+        reviewer_agent_id: s.reviewLlmModel || undefined,
         review_enabled: true,
         review_strategy: "consultive",
       }, (progress) => {
@@ -1039,11 +1082,11 @@ export function useChatGenerator() {
         restricoesAdicionais: restricoesAdicionais || undefined,
         contratoNome,
         generatorModelLabel:
-          s.llmModels.find((m) => m.id === s.llmModel)?.label ||
+          s.generationModels.find((m) => m.id === s.llmModel)?.label ||
           s.llmModel ||
           undefined,
         reviewModelLabel:
-          s.llmModels.find((m) => m.id === s.reviewLlmModel)?.label ||
+          s.reviewModels.find((m) => m.id === s.reviewLlmModel)?.label ||
           s.reviewLlmModel ||
           undefined,
       };
@@ -1101,8 +1144,8 @@ export function useChatGenerator() {
         : undefined,
       restricoes_usuario: buildRestricoesPayload(s.contratoAnalise, s.restricoes),
       refeicoes: s.refeicoes,
-      llm_model: s.llmModel || undefined,
-      review_llm_model: s.reviewLlmModel || undefined,
+      generator_agent_id: s.llmModel || undefined,
+      reviewer_agent_id: s.reviewLlmModel || undefined,
       review_enabled: true,
       review_strategy: "consultive" as const,
       contrato_analise_confirmada: skipContractAnalysis,
@@ -1166,7 +1209,7 @@ export function useChatGenerator() {
             const effectiveElapsedMs = Math.max(totalElapsedMs, staleByBackend, staleBySignature);
             if (effectiveElapsedMs > staleTimeoutMsRef.current) {
               failActiveGeneration(
-                "Geração parada no backend por tempo excessivo. Tente novamente, troque o modelo ou reduza os dias.",
+                "Geração parada no backend por tempo excessivo. Tente novamente, troque o agente ou reduza os dias.",
                 "timeout_budget_exceeded"
               );
               return;
@@ -1377,9 +1420,9 @@ export function useChatGenerator() {
             return;
           }
           failActiveGeneration(
-            "Falha ao recuperar status de geração. Verifique a conexão com a API e tente novamente.",
-            "status_sync_failed"
-          );
+          "Falha ao recuperar status de geração. Verifique a conexão com a API e tente novamente.",
+          "status_sync_failed"
+        );
         });
     };
 
@@ -1432,7 +1475,7 @@ export function useChatGenerator() {
     const nextModel = s.generationModels[(currentIndex + 1) % s.generationModels.length];
     if (!nextModel?.id) return;
     setLlmModel(nextModel.id);
-    addAgentMessage("text", `Modelo alterado para ${nextModel.label || nextModel.id}.`);
+    addAgentMessage("text", `Agente gerador alterado para ${nextModel.label || nextModel.id}.`);
   }
 
   function reduceDaysAfterTimeout() {
@@ -1474,7 +1517,7 @@ export function useChatGenerator() {
   function setLlmModel(modelId: string) {
     if (!modelId) return;
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(LLM_MODEL_STORAGE_KEY, modelId);
+      window.localStorage.setItem(GENERATOR_AGENT_STORAGE_KEY, modelId);
     }
     setState((s) => ({ ...s, llmModel: modelId }));
   }
@@ -1482,7 +1525,7 @@ export function useChatGenerator() {
   function setReviewLlmModel(modelId: string) {
     if (!modelId) return;
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(REVIEW_LLM_MODEL_STORAGE_KEY, modelId);
+      window.localStorage.setItem(REVIEWER_AGENT_STORAGE_KEY, modelId);
     }
     setState((s) => ({ ...s, reviewLlmModel: modelId }));
   }
@@ -1548,8 +1591,8 @@ export function useChatGenerator() {
           contrato_id: s.contratoId || undefined,
           cardapio_id: s.cardapioId || undefined,
           job_id: s.jobId || undefined,
-          llm_model: s.llmModel || undefined,
-          review_llm_model: s.reviewLlmModel || undefined,
+          generator_agent_id: s.llmModel || undefined,
+          reviewer_agent_id: s.reviewLlmModel || undefined,
         }),
       )
       .then((response) => {

@@ -1,6 +1,6 @@
 
 """
-Menu.AI — Backend FastAPI v3.6.25
+Menu.AI — Backend FastAPI v3.7.0
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
@@ -30,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.6.25"
+APP_VERSION = "3.7.0"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -131,11 +131,13 @@ from routers.contratos import router as contratos_router
 from routers.ingredientes import router as ingredientes_router
 from routers.fichas_tecnicas import router as fichas_router
 from routers.cardapios import router as cardapios_router
+from routers.agents_runtime import router as agents_runtime_router
 from routers.knowledge import router as knowledge_router
 from routers.chat import router as chat_router
 from database.schemas import GerarCardapioRequest
 
 # Admin routers (disponíveis no app principal para consumo pelo Next.js admin)
+from admin.routers.agents_admin import router as admin_agents_router
 from admin.routers.meta import router as admin_meta_router
 from admin.routers.llm_admin import router as admin_llm_router
 from admin.routers.knowledge_admin import router as admin_knowledge_router
@@ -146,10 +148,12 @@ app.include_router(contratos_router)
 app.include_router(ingredientes_router)
 app.include_router(fichas_router)
 app.include_router(cardapios_router)
+app.include_router(agents_runtime_router)
 app.include_router(knowledge_router)
 app.include_router(chat_router)
 app.include_router(admin_meta_router)
 app.include_router(admin_llm_router)
+app.include_router(admin_agents_router)
 app.include_router(admin_knowledge_router)
 
 # ============================================================
@@ -498,18 +502,41 @@ async def gerar_cardapio(
             detail="empresa_id em falta: inicie sessão (utilizador com empresa) ou defina DEFAULT_EMPRESA_ID no .env com DEBUG=true e DEMO_GERAR_SEM_AUTH=true.",
         )
     body_resolved = body.model_copy(update={"empresa_id": eid})
+    resolved_generator_agent = None
+    resolved_reviewer_agent = None
+    resolved_contract_agent = None
+    resolved_copilot_agent = None
+    effective_llm_model = body_resolved.llm_model
+    effective_review_llm_model = body_resolved.review_llm_model
 
     if _db_ok:
-        from pipeline.openrouter_models import (
-            assert_llm_model_allowed_for_generation,
-            assert_llm_model_allowed_for_review,
-        )
         from database.connection import SessionLocal
+        from database.models import AgentSlotType
+        from services.agent_runtime import resolve_agent_for_slot, resolved_agent_payload
 
         db_chk = SessionLocal()
         try:
-            assert_llm_model_allowed_for_generation(db_chk, body_resolved.llm_model)
-            assert_llm_model_allowed_for_review(db_chk, body_resolved.review_llm_model)
+            resolved_generator_agent = resolve_agent_for_slot(
+                db_chk,
+                AgentSlotType.GENERATOR,
+                profile_id=body_resolved.generator_agent_id,
+            )
+            effective_llm_model = resolved_generator_agent.version.provider_model_id
+            if body_resolved.review_enabled:
+                resolved_reviewer_agent = resolve_agent_for_slot(
+                    db_chk,
+                    AgentSlotType.REVIEWER,
+                    profile_id=body_resolved.reviewer_agent_id,
+                )
+                effective_review_llm_model = resolved_reviewer_agent.version.provider_model_id
+            resolved_contract_agent = resolve_agent_for_slot(
+                db_chk,
+                AgentSlotType.CONTRACT_ANALYZER,
+            )
+            resolved_copilot_agent = resolve_agent_for_slot(
+                db_chk,
+                AgentSlotType.COPILOT,
+            )
         finally:
             db_chk.close()
 
@@ -522,6 +549,16 @@ async def gerar_cardapio(
     now_iso = datetime.utcnow().isoformat()
     now_ts = time.time()
     payload_config = body_resolved.model_dump()
+    payload_config["llm_model"] = effective_llm_model
+    payload_config["review_llm_model"] = effective_review_llm_model
+    if resolved_generator_agent:
+        payload_config["generator_agent"] = resolved_agent_payload(resolved_generator_agent)
+    if resolved_reviewer_agent:
+        payload_config["reviewer_agent"] = resolved_agent_payload(resolved_reviewer_agent)
+    if resolved_contract_agent:
+        payload_config["contract_analyzer_agent"] = resolved_agent_payload(resolved_contract_agent)
+    if resolved_copilot_agent:
+        payload_config["copilot_agent"] = resolved_agent_payload(resolved_copilot_agent)
     payload_config["timeout_budget_seconds"] = timeout_budget_seconds
     job_state.jobs[job_id] = {
         "status": "iniciando",
@@ -574,14 +611,20 @@ async def gerar_cardapio(
             eid,
             body_resolved.contrato_id,
             body_resolved.nome_cardapio,
-            body_resolved.llm_model,
-            body_resolved.review_llm_model,
+            effective_llm_model,
+            effective_review_llm_model,
             body_resolved.review_enabled,
             body_resolved.review_strategy,
             body_resolved.generation_mode,
             upload_dir=UPLOAD_DIR,
             db_ok=_db_ok,
             contrato_analise_confirmada=body_resolved.contrato_analise_confirmada,
+            agent_bindings={
+                "generator": resolved_agent_payload(resolved_generator_agent) if resolved_generator_agent else None,
+                "reviewer": resolved_agent_payload(resolved_reviewer_agent) if resolved_reviewer_agent else None,
+                "contract_analyzer": resolved_agent_payload(resolved_contract_agent) if resolved_contract_agent else None,
+                "copilot": resolved_agent_payload(resolved_copilot_agent) if resolved_copilot_agent else None,
+            },
         )
     except Exception as exc:
         raise HTTPException(
@@ -595,7 +638,7 @@ async def gerar_cardapio(
         runtime_status,
         body_resolved.generation_mode,
         body_resolved.contrato_analise_confirmada,
-        body_resolved.llm_model,
+        effective_llm_model,
         body_resolved.contrato_id,
         eid,
     )
@@ -613,7 +656,9 @@ async def gerar_cardapio_com_upload(
     restricoes_usuario: str = Form(""),
     nome_cardapio: Optional[str] = Form(None),
     llm_model: Optional[str] = Form(None),
+    generator_agent_id: Optional[str] = Form(None),
     review_llm_model: Optional[str] = Form(None),
+    reviewer_agent_id: Optional[str] = Form(None),
     review_enabled: bool = Form(True),
     review_strategy: str = Form("consultive"),
     usuario: Optional[Usuario] = Depends(get_usuario_geracao),
@@ -731,7 +776,9 @@ async def gerar_cardapio_com_upload(
         "filename": file.filename,
         "tipo": ext[1:],
         "tamanho_kb": round(len(content) / 1024, 1),
+        "generator_agent_id": generator_agent_id,
         "review_llm_model": review_llm_model,
+        "reviewer_agent_id": reviewer_agent_id,
         "review_enabled": review_enabled,
         "review_strategy": review_strategy,
     }

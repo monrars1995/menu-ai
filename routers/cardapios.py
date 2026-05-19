@@ -7,6 +7,7 @@ import io
 import math
 import re
 import unicodedata
+from collections import defaultdict
 from datetime import datetime
 from typing import List, Optional
 
@@ -32,6 +33,15 @@ from services.knowledge_hooks import sync_knowledge_safe
 
 router = APIRouter(prefix="/api/cardapios", tags=["Cardápios"])
 
+TIPOS_REFEICAO_LABELS = {
+    "cafe_manha": "Café da Manhã",
+    "lanche_manha": "Lanche da Manhã",
+    "almoco": "Almoço",
+    "lanche_tarde": "Lanche da Tarde",
+    "jantar": "Jantar",
+    "ceia": "Ceia",
+}
+
 
 def _resolve_empresa_context(usuario, empresa_id: Optional[str]) -> str:
     requested = str(empresa_id).strip() if empresa_id else None
@@ -51,6 +61,159 @@ def _resolve_empresa_context(usuario, empresa_id: Optional[str]) -> str:
     if not user_empresa:
         raise HTTPException(status_code=400, detail="Utilizador sem empresa associada.")
     return user_empresa
+
+
+def _norm_lookup(value: object) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = text.encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _hydrate_cardapio_costs(db: Session, cardapio: Cardapio) -> bool:
+    if not cardapio.empresa_id:
+        return False
+    refs = [ref for dia in (cardapio.dias or []) for ref in (dia.refeicoes or [])]
+    if not refs:
+        return False
+
+    fichas = (
+        db.query(FichaTecnica)
+        .filter(FichaTecnica.empresa_id == cardapio.empresa_id, FichaTecnica.ativo == True)  # noqa: E712
+        .all()
+    )
+    ficha_by_id = {str(f.id): f for f in fichas}
+    ficha_by_code = {_norm_lookup(f.codigo): f for f in fichas if f.codigo}
+    ficha_by_name = {_norm_lookup(f.nome): f for f in fichas if f.nome}
+
+    changed = False
+    total_geral = 0.0
+    for dia in cardapio.dias or []:
+        total_dia = 0.0
+        for ref in dia.refeicoes or []:
+            ficha = None
+            if ref.ficha_tecnica_id:
+                ficha = ficha_by_id.get(str(ref.ficha_tecnica_id))
+            if ficha is None and ref.codigo_prato:
+                ficha = ficha_by_code.get(_norm_lookup(ref.codigo_prato))
+            if ficha is None and ref.nome_prato:
+                ficha = ficha_by_name.get(_norm_lookup(ref.nome_prato))
+            if ficha:
+                if float(ficha.custo_porcao or 0.0) <= 0 and getattr(ficha, "ingredientes_ficha", None):
+                    try:
+                        from services.cascata import recalcular_ficha_unica
+
+                        recalcular_ficha_unica(db, str(ficha.id))
+                        db.flush()
+                    except Exception:
+                        pass
+                if not ref.ficha_tecnica_id:
+                    ref.ficha_tecnica_id = str(ficha.id)
+                    changed = True
+                if not ref.codigo_prato and ficha.codigo:
+                    ref.codigo_prato = ficha.codigo
+                    changed = True
+                custo_ficha = round(float(ficha.custo_porcao or 0.0), 2)
+                if custo_ficha > 0 and round(float(ref.custo_porcao or 0.0), 2) != custo_ficha:
+                    ref.custo_porcao = custo_ficha
+                    changed = True
+            total_dia += float(ref.custo_porcao or 0.0)
+        total_dia = round(total_dia, 2)
+        if round(float(dia.custo_total or 0.0), 2) != total_dia:
+            dia.custo_total = total_dia
+            changed = True
+        total_geral += total_dia
+    media = round(total_geral / max(len(cardapio.dias or []), 1), 2)
+    if round(float(cardapio.custo_medio_dia or 0.0), 2) != media:
+        cardapio.custo_medio_dia = media
+        changed = True
+    if changed:
+        cardapio.updated_at = datetime.utcnow()
+    return changed
+
+
+def _group_refeicoes_por_tipo(dia: CardapioDia) -> list[dict]:
+    grupos: dict[str, list[CardapioRefeicao]] = defaultdict(list)
+    for ref in sorted(dia.refeicoes or [], key=lambda item: ((item.ordem or 0), item.nome_prato or "")):
+        grupos[str(ref.tipo_refeicao or "almoco")].append(ref)
+    saida: list[dict] = []
+    for tipo, items in grupos.items():
+        componentes = []
+        total = 0.0
+        for ref in items:
+            custo = round(float(ref.custo_porcao or 0.0), 2)
+            total += custo
+            componentes.append(
+                {
+                    "id": str(ref.id),
+                    "tipo_refeicao": tipo,
+                    "categoria": ref.categoria,
+                    "ficha_tecnica_id": str(ref.ficha_tecnica_id) if ref.ficha_tecnica_id else None,
+                    "codigo_prato": ref.codigo_prato,
+                    "nome_prato": ref.nome_prato,
+                    "custo_unitario": custo,
+                    "custo_total_item": custo,
+                    "observacoes": ref.observacoes,
+                    "ordem": int(ref.ordem or 0),
+                }
+            )
+        saida.append(
+            {
+                "tipo_refeicao": tipo,
+                "label": TIPOS_REFEICAO_LABELS.get(tipo, tipo.replace("_", " ").title()),
+                "custo_total": round(total, 2),
+                "componentes": componentes,
+            }
+        )
+    return saida
+
+
+def _serialize_cardapio_detalhado(cardapio: Cardapio) -> dict:
+    return {
+        "id": str(cardapio.id),
+        "empresa_id": str(cardapio.empresa_id),
+        "contrato_id": str(cardapio.contrato_id) if cardapio.contrato_id else None,
+        "criado_por_id": str(cardapio.criado_por_id) if cardapio.criado_por_id else None,
+        "nome": cardapio.nome,
+        "periodo_inicio": cardapio.periodo_inicio,
+        "periodo_fim": cardapio.periodo_fim,
+        "observacoes": cardapio.observacoes,
+        "status": cardapio.status,
+        "custo_medio_dia": cardapio.custo_medio_dia,
+        "num_dias": cardapio.num_dias,
+        "job_id": cardapio.job_id,
+        "created_at": cardapio.created_at,
+        "updated_at": cardapio.updated_at,
+        "resultado_raw": cardapio.resultado_raw,
+        "parametros_json": cardapio.parametros_json,
+        "dias": [
+            {
+                "id": str(dia.id),
+                "cardapio_id": str(dia.cardapio_id),
+                "numero_dia": dia.numero_dia,
+                "data": dia.data,
+                "dia_semana": dia.dia_semana,
+                "observacoes": dia.observacoes,
+                "custo_total": round(float(dia.custo_total or 0.0), 2),
+                "refeicoes": [
+                    {
+                        "id": str(ref.id),
+                        "dia_id": str(ref.dia_id),
+                        "tipo_refeicao": ref.tipo_refeicao,
+                        "categoria": ref.categoria,
+                        "codigo_prato": ref.codigo_prato,
+                        "nome_prato": ref.nome_prato,
+                        "custo_porcao": round(float(ref.custo_porcao or 0.0), 2),
+                        "ficha_tecnica_id": str(ref.ficha_tecnica_id) if ref.ficha_tecnica_id else None,
+                        "observacoes": ref.observacoes,
+                        "ordem": int(ref.ordem or 0),
+                    }
+                    for ref in sorted(dia.refeicoes or [], key=lambda item: ((item.ordem or 0), item.nome_prato or ""))
+                ],
+                "refeicoes_agrupadas": _group_refeicoes_por_tipo(dia),
+            }
+            for dia in sorted(cardapio.dias or [], key=lambda item: (item.numero_dia or 0, item.data or datetime.utcnow().date()))
+        ],
+    }
 
 
 @router.get("/", summary="Listar cardápios")
@@ -101,7 +264,11 @@ def buscar(
     if usuario.role != "super_admin" and cardapio.empresa_id != usuario.empresa_id:
         raise HTTPException(status_code=403, detail="Acesso negado.")
 
-    return CardapioDetalhado.model_validate(cardapio)
+    if _hydrate_cardapio_costs(db, cardapio):
+        db.commit()
+        db.refresh(cardapio)
+
+    return CardapioDetalhado.model_validate(_serialize_cardapio_detalhado(cardapio))
 
 
 @router.post("/", response_model=CardapioOut, status_code=status.HTTP_201_CREATED,
@@ -268,6 +435,9 @@ def exportar(
 
     if not cardapio.resultado_raw and not cardapio.dias:
         raise HTTPException(status_code=404, detail="Cardápio sem conteúdo para exportar.")
+    if _hydrate_cardapio_costs(db, cardapio):
+        db.commit()
+        db.refresh(cardapio)
 
     nome_arquivo = re.sub(r"[^\w\-]", "_", cardapio.nome)
 
@@ -387,17 +557,22 @@ def _cardapio_para_dataframe(cardapio: Cardapio) -> pd.DataFrame:
     if _tem_refeicoes_estruturadas(cardapio):
         rows = []
         for dia in cardapio.dias:
+            meal_totals: dict[str, float] = defaultdict(float)
+            for ref in dia.refeicoes:
+                meal_totals[str(ref.tipo_refeicao or "almoco")] += float(ref.custo_porcao or 0.0)
             for ref in dia.refeicoes:
                 # Custo: preserva valor real; marca None se zero para preenchimento posterior
                 custo = ref.custo_porcao or 0
                 rows.append({
                     "Dia": dia.numero_dia,
                     "Data": dia.data.strftime("%d/%m/%Y") if dia.data else "",
-                    "Refeição": ref.tipo_refeicao.replace("_", " ").title(),
+                    "Refeição": TIPOS_REFEICAO_LABELS.get(ref.tipo_refeicao, ref.tipo_refeicao.replace("_", " ").title()),
                     "Categoria": ref.categoria or "",
                     "Código": ref.codigo_prato or "",
                     "Prato": ref.nome_prato,
-                    "Custo (R$)": round(custo, 2) if custo > 0 else None,
+                    "Custo Item (R$)": round(custo, 2) if custo > 0 else None,
+                    "Total Refeição (R$)": round(meal_totals.get(str(ref.tipo_refeicao or "almoco"), 0.0), 2),
+                    "Total Dia (R$)": round(float(dia.custo_total or 0.0), 2),
                 })
         return pd.DataFrame(rows) if rows else pd.DataFrame({"Cardápio": [cardapio.nome]})
 
@@ -431,7 +606,7 @@ def _enriquecer_custos_dataframe(
     cardapio: Cardapio,
     db: Session,
 ) -> pd.DataFrame:
-    """Preenche ou sobrescreve coluna Custo (R$) com custo_porcao das fichas (match por código)."""
+    """Preenche ou sobrescreve coluna de custo do item com custo_porcao das fichas (match por código)."""
     if df.empty or len(df.columns) <= 1:
         return df
     col_cod = _coluna_codigo_df(df)
@@ -454,7 +629,7 @@ def _enriquecer_custos_dataframe(
     )
     custo_por_codigo = {f.codigo.strip(): float(f.custo_porcao or 0) for f in fichas}
 
-    custo_col = "Custo (R$)"
+    custo_col = "Custo Item (R$)" if "Custo Item (R$)" in df.columns else "Custo (R$)"
     if custo_col not in df.columns:
         df = df.copy()
         df[custo_col] = None
@@ -705,8 +880,13 @@ def _gerar_txt(cardapio: Cardapio) -> str:
     linhas = [f"CARDÁPIO: {cardapio.nome}\n"]
     for dia in cardapio.dias:
         linhas.append(f"\n=== Dia {dia.numero_dia} ===")
-        for ref in dia.refeicoes:
-            linhas.append(f"  [{ref.categoria}] {ref.nome_prato} — R$ {ref.custo_porcao:.2f}")
+        for refeicao in _group_refeicoes_por_tipo(dia):
+            linhas.append(f"  {refeicao['label']} — Total refeição: R$ {float(refeicao['custo_total'] or 0.0):.2f}")
+            for comp in refeicao["componentes"]:
+                linhas.append(
+                    f"    [{comp.get('categoria') or '-'}] {comp.get('nome_prato') or '-'} — "
+                    f"R$ {float(comp.get('custo_total_item') or 0.0):.2f}"
+                )
         linhas.append(f"  Total do dia: R$ {dia.custo_total:.2f}")
     return "\n".join(linhas)
 
@@ -914,7 +1094,7 @@ def _gerar_xlsx(cardapio: Cardapio, db: Session) -> io.BytesIO:
     resumo_dia_rows = []
     custo_total_geral = 0.0
     for dia in cardapio.dias:
-        n_refs = len(dia.refeicoes)
+        n_refs = len(_group_refeicoes_por_tipo(dia))
         custo_dia = dia.custo_total or sum(r.custo_porcao or 0 for r in dia.refeicoes)
         custo_medio = round(custo_dia / n_refs, 2) if n_refs else 0
         resumo_dia_rows.append([

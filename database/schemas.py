@@ -344,6 +344,26 @@ class CardapioRefeicaoOut(CardapioRefeicaoCreate):
         from_attributes = True
 
 
+class CardapioComponenteOut(BaseModel):
+    id: str
+    tipo_refeicao: str
+    categoria: Optional[str] = None
+    ficha_tecnica_id: Optional[str] = None
+    codigo_prato: Optional[str] = None
+    nome_prato: str
+    custo_unitario: float = 0.0
+    custo_total_item: float = 0.0
+    observacoes: Optional[str] = None
+    ordem: int = 0
+
+
+class CardapioRefeicaoGrupoOut(BaseModel):
+    tipo_refeicao: str
+    label: str
+    custo_total: float = 0.0
+    componentes: List[CardapioComponenteOut] = Field(default_factory=list)
+
+
 class CardapioDiaCreate(BaseModel):
     numero_dia: int = Field(..., ge=1)
     data: Optional[date] = None
@@ -357,6 +377,7 @@ class CardapioDiaOut(CardapioDiaCreate):
     cardapio_id: str
     custo_total: float
     refeicoes: List[CardapioRefeicaoOut] = []
+    refeicoes_agrupadas: List[CardapioRefeicaoGrupoOut] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -451,6 +472,106 @@ LlmModelId = Literal[
 
 GenerationMode = Literal["fast", "full"]
 ReviewStrategy = Literal["consultive"]
+AgentSlotTypeId = Literal["contract_analyzer", "generator", "reviewer", "copilot"]
+
+
+class AgentProfileBase(BaseModel):
+    name: str = Field(..., min_length=2, max_length=160)
+    slug: str = Field(..., min_length=2, max_length=120, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    slot_type: AgentSlotTypeId
+    description: Optional[str] = None
+    enabled: bool = True
+
+
+class AgentProfileCreate(AgentProfileBase):
+    provider_model_id: LlmModelId
+    system_prompt: str = Field(..., min_length=10)
+    allowed_tools: List[str] = Field(default_factory=list)
+    publish_notes: Optional[str] = None
+
+
+class AgentProfileUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=160)
+    slug: Optional[str] = Field(default=None, min_length=2, max_length=120, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    description: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+class AgentDraftUpdate(BaseModel):
+    provider_model_id: Optional[LlmModelId] = None
+    system_prompt: Optional[str] = Field(default=None, min_length=10)
+    allowed_tools: Optional[List[str]] = None
+    enabled: Optional[bool] = None
+    publish_notes: Optional[str] = None
+
+
+class AgentPublishRequest(BaseModel):
+    publish_notes: Optional[str] = None
+
+
+class AgentVersionOut(BaseModel):
+    id: str
+    profile_id: str
+    version_number: int
+    status: str
+    provider_model_id: str
+    system_prompt: str
+    allowed_tools: List[str] = Field(default_factory=list)
+    enabled: bool
+    publish_notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    published_at: Optional[datetime] = None
+
+
+class AgentProfileOut(AgentProfileBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    draft_version: Optional[AgentVersionOut] = None
+    published_versions: List[AgentVersionOut] = Field(default_factory=list)
+    active_published_version: Optional[AgentVersionOut] = None
+
+
+class FlowAgentBindingOut(BaseModel):
+    id: str
+    flow_key: str
+    slot_type: AgentSlotTypeId
+    enabled: bool
+    profile_id: Optional[str] = None
+    version_id: Optional[str] = None
+    profile_name: Optional[str] = None
+    version_number: Optional[int] = None
+    updated_at: datetime
+
+
+class FlowAgentBindingUpdate(BaseModel):
+    profile_id: Optional[str] = None
+    version_id: Optional[str] = None
+    enabled: bool = True
+
+
+class RuntimeAgentOption(BaseModel):
+    profile_id: str
+    version_id: str
+    slot_type: AgentSlotTypeId
+    name: str
+    slug: str
+    description: Optional[str] = None
+    provider_model_id: str
+    provider_label: Optional[str] = None
+    enabled: bool = True
+    allowed_tools: List[str] = Field(default_factory=list)
+    version_number: int
+    published_at: Optional[datetime] = None
+
+
+class AgentsRuntimeResponse(BaseModel):
+    flow_key: str
+    generator_agents: List[RuntimeAgentOption] = Field(default_factory=list)
+    reviewer_agents: List[RuntimeAgentOption] = Field(default_factory=list)
+    contract_analyzer_binding: Optional[RuntimeAgentOption] = None
+    copilot_binding: Optional[RuntimeAgentOption] = None
 
 
 class GerarCardapioRequest(BaseModel):
@@ -472,6 +593,14 @@ class GerarCardapioRequest(BaseModel):
     llm_model: Optional[LlmModelId] = Field(
         default=None,
         description="Modelo LLM (id interno). Omitir usa MENUAI_DEFAULT_LLM_MODEL ou openai-gpt-5.5.",
+    )
+    generator_agent_id: Optional[str] = Field(
+        default=None,
+        description="Agent profile id publicado para o slot gerador. Tem prioridade sobre llm_model.",
+    )
+    reviewer_agent_id: Optional[str] = Field(
+        default=None,
+        description="Agent profile id publicado para o slot revisor. Tem prioridade sobre review_llm_model.",
     )
     contrato_analise_confirmada: bool = Field(
         default=False,

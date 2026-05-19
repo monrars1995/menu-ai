@@ -11,9 +11,10 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
-from database.models import MensagemChat, RoleMensagem, SessaoChat
+from database.models import AgentSlotType, MensagemChat, RoleMensagem, SessaoChat
 from pipeline.llm_providers import get_effective_default_model_id
 from pipeline.model_router import ModelRouter
+from services.agent_runtime import resolve_agent_for_slot
 from services.copilot_tools import (
     CopilotContext,
     build_openai_tool_specs,
@@ -83,8 +84,8 @@ def _build_context(sessao: SessaoChat, usuario: Any, metadata_json: Optional[dic
     )
 
 
-def _build_system_prompt(ctx: CopilotContext) -> str:
-    return (
+def _build_system_prompt(ctx: CopilotContext, system_override: Optional[str] = None) -> str:
+    base = (
         "Você é o copiloto operacional do Menu.AI. "
         "Seu trabalho é operar com precisão sobre ingredientes, fichas técnicas, contratos e cardápios. "
         "Use tools quando houver ação ou consulta objetiva. "
@@ -98,6 +99,9 @@ def _build_system_prompt(ctx: CopilotContext) -> str:
         f"- cardapio_id: {ctx.cardapio_id or 'nenhum'}\n"
         f"- job_id: {ctx.job_id or 'nenhum'}\n"
     )
+    if system_override and system_override.strip():
+        return f"{system_override.strip()}\n\n---\n\n{base}"
+    return base
 
 
 def _history_to_messages(rows: list[MensagemChat]) -> list[dict[str, Any]]:
@@ -150,8 +154,9 @@ def run_copilot_turn(
     metadata_json: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     ctx = _build_context(sessao, usuario, metadata_json)
-    model_id = _resolve_chat_model(sessao, metadata_json)
-    tool_specs = build_openai_tool_specs()
+    resolved_copilot_agent = resolve_agent_for_slot(db, AgentSlotType.COPILOT)
+    model_id = resolved_copilot_agent.version.provider_model_id or _resolve_chat_model(sessao, metadata_json)
+    tool_specs = build_openai_tool_specs(resolved_copilot_agent.allowed_tools)
 
     history = (
         db.query(MensagemChat)
@@ -162,7 +167,7 @@ def run_copilot_turn(
     )
     history.reverse()
 
-    messages = [{"role": "system", "content": _build_system_prompt(ctx)}]
+    messages = [{"role": "system", "content": _build_system_prompt(ctx, resolved_copilot_agent.version.system_prompt)}]
     history_messages = _history_to_messages(history)
     messages.extend(history_messages)
     if not history_messages or history_messages[-1].get("role") != RoleMensagem.USER or str(history_messages[-1].get("content") or "") != user_content:
@@ -188,7 +193,13 @@ def run_copilot_turn(
                 fn = (selected or {}).get("function") or {}
                 tool_name = str(fn.get("name") or "").strip()
                 raw_args = _safe_json_loads(fn.get("arguments"))
-                tool_result = execute_tool(db, ctx, tool_name, raw_args)
+                tool_result = execute_tool(
+                    db,
+                    ctx,
+                    tool_name,
+                    raw_args,
+                    allowed_tool_names=resolved_copilot_agent.allowed_tools,
+                )
                 return {
                     "assistant_message": tool_result.assistant_message,
                     "tool_name": tool_result.tool_name,
@@ -198,6 +209,8 @@ def run_copilot_turn(
                         "tool_name": tool_result.tool_name,
                         "tool_result": tool_result.result,
                         "model_id": model_id,
+                        "copilot_agent_id": str(resolved_copilot_agent.profile.id),
+                        "copilot_agent_version_id": str(resolved_copilot_agent.version.id),
                     },
                     "context_updates": tool_result.context_updates or {},
                 }
@@ -207,16 +220,30 @@ def run_copilot_turn(
                     "tool_name": None,
                     "result": None,
                     "tool_calls": None,
-                    "metadata_json": {"model_id": model_id},
+                    "metadata_json": {
+                        "model_id": model_id,
+                        "copilot_agent_id": str(resolved_copilot_agent.profile.id),
+                        "copilot_agent_version_id": str(resolved_copilot_agent.version.id),
+                    },
                     "context_updates": {},
                 }
     except Exception as exc:  # noqa: BLE001
         llm_error = str(exc)
         logger.warning("copilot_llm_failed sessao=%s erro=%s", sessao.id, exc)
 
-    fallback_tool, fallback_args = fallback_route_from_text(user_content, ctx)
+    fallback_tool, fallback_args = fallback_route_from_text(
+        user_content,
+        ctx,
+        allowed_tool_names=resolved_copilot_agent.allowed_tools,
+    )
     if fallback_tool:
-        tool_result = execute_tool(db, ctx, fallback_tool, fallback_args)
+        tool_result = execute_tool(
+            db,
+            ctx,
+            fallback_tool,
+            fallback_args,
+            allowed_tool_names=resolved_copilot_agent.allowed_tools,
+        )
         return {
             "assistant_message": tool_result.assistant_message,
             "tool_name": tool_result.tool_name,
@@ -226,6 +253,8 @@ def run_copilot_turn(
                 "tool_name": tool_result.tool_name,
                 "tool_result": tool_result.result,
                 "fallback_reason": llm_error,
+                "copilot_agent_id": str(resolved_copilot_agent.profile.id),
+                "copilot_agent_version_id": str(resolved_copilot_agent.version.id),
             },
             "context_updates": tool_result.context_updates or {},
         }

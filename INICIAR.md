@@ -1,4 +1,4 @@
-# Menu.AI v3.6.25 — Como iniciar
+# Menu.AI v3.7.0 — Como iniciar
 
 ## Stack suportada
 
@@ -166,8 +166,8 @@ docker compose exec app alembic revision --autogenerate -m "descricao da mudanca
 
 ## UI (`templates/index.html`)
 
-- O seletor de modelo usa OpenAI, Gemini e OpenRouter quando as respectivas chaves estão configuradas.
-- O modelo selecionado fica persistido no navegador.
+- O `/gerar` usa seleção de agentes publicados para gerador e revisor.
+- Cada agente resolve internamente modelo, prompt de sistema e tools permitidas.
 - Header e fluxo de geração usam o mesmo catálogo exposto pela API.
 
 ## Orquestração

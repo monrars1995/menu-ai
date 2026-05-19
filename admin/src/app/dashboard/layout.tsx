@@ -11,6 +11,7 @@ import {
   BookOpen,
   ClipboardList,
   Cpu,
+  Bot,
   BrainCircuit,
   Sparkles,
   LogOut,
@@ -24,6 +25,7 @@ const nav = [
   { href: "/fichas", label: "Fichas Técnicas", icon: BookOpen },
   { href: "/cardapios", label: "Cardápios", icon: ClipboardList },
   { href: "/llm", label: "LLM", icon: Cpu },
+  { href: "/agents", label: "Agents", icon: Bot },
   { href: "/knowledge", label: "Knowledge", icon: BrainCircuit },
 ];
 

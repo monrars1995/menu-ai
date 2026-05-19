@@ -169,7 +169,7 @@ def reconcile_runtime_job_state(job_id: str, db_ok: bool) -> Optional[dict]:
         return job
     message = (
         "A geração não iniciou corretamente no servidor. "
-        "Tente novamente. Se persistir, troque o modelo ou reduza os dias."
+        "Tente novamente. Se persistir, troque o agente ou reduza os dias."
     )
     return _mark_job_error(
         job_id,
@@ -289,6 +289,7 @@ def launch_generation_job(
     upload_dir: Path,
     db_ok: bool,
     contrato_analise_confirmada: bool = False,
+    agent_bindings: Optional[dict[str, dict]] = None,
 ) -> threading.Thread:
     now_iso = _iso_now()
     now_ts = time.time()
@@ -310,6 +311,8 @@ def launch_generation_job(
     )
     job.setdefault("logs", [])
     job.setdefault("config", {})
+    if agent_bindings:
+        job["config"]["agent_bindings"] = agent_bindings
     job.setdefault("started_at", now_iso)
     job.setdefault("started_ts", now_ts)
     job["status"] = "executando"
@@ -336,6 +339,7 @@ def launch_generation_job(
         review_llm_model=review_llm_model,
         review_enabled=review_enabled,
         review_strategy=review_strategy,
+        agent_bindings=agent_bindings,
         empresa_id=empresa_id,
         contrato_id=contrato_id,
     )
@@ -365,6 +369,7 @@ def launch_generation_job(
                 upload_dir=upload_dir,
                 db_ok=db_ok,
                 contrato_analise_confirmada=contrato_analise_confirmada,
+                agent_bindings=agent_bindings,
             )
         except BaseException as exc:
             logger.exception("job_thread_crashed job_id=%s", job_id)
@@ -419,6 +424,7 @@ def executar_crew(
     upload_dir: Path,
     db_ok: bool,
     contrato_analise_confirmada: bool = False,
+    agent_bindings: Optional[dict[str, dict]] = None,
 ):
     started_ts = time.time()
     q = job_state.job_queues[job_id]
@@ -545,7 +551,7 @@ def executar_crew(
                 continue
             msg = (
                 "Geração interrompida por falta de progresso do servidor. "
-                "Tente novamente, troque o modelo ou reduza os dias."
+                "Tente novamente, troque o agente ou reduza os dias."
             )
             j["status"] = "erro"
             j["error"] = msg
@@ -603,6 +609,7 @@ def executar_crew(
             review_llm_model=review_llm_model,
             review_enabled=review_enabled,
             review_strategy=review_strategy,
+            agent_bindings=agent_bindings,
             contrato_id=contrato_id,
             empresa_id=empresa_id,
             stuck_threshold_seconds=stuck_threshold_seconds,
@@ -655,6 +662,7 @@ def executar_crew(
                 "review_enabled": review_enabled,
                 "review_strategy": review_strategy,
                 "generation_mode": generation_mode or os.getenv("MENUAI_GENERATION_MODE", "fast"),
+                "agent_bindings": agent_bindings or {},
             },
         )
 
@@ -705,6 +713,11 @@ def executar_crew(
             step_callback=on_step_complete,
             db_disponivel=db_ok,
             llm_model_id=llm_model,
+            step_system_overrides=(
+                {0: str((agent_bindings or {}).get("contract_analyzer", {}).get("system_prompt") or "").strip()}
+                if str((agent_bindings or {}).get("contract_analyzer", {}).get("system_prompt") or "").strip()
+                else None
+            ),
         )
         crew._job_id = job_id
 
@@ -803,6 +816,7 @@ def executar_crew(
                 review_llm_model=review_llm_model,
                 review_enabled=review_enabled,
                 review_strategy=review_strategy,
+                agent_bindings=agent_bindings,
             )
             result = fast_result["markdown"]
             job_state.jobs[job_id]["status"] = "concluido"
@@ -838,6 +852,7 @@ def executar_crew(
                     "review_applied_fixes_count": int(fast_result.get("review_applied_fixes_count") or 0),
                     "degraded_generation": bool(fast_result.get("degraded_generation")),
                     "generation_state": fast_result.get("generation_state"),
+                    "agent_bindings": agent_bindings or {},
                 }
             )
             _persist_job_snapshot(

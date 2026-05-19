@@ -121,6 +121,7 @@ export interface CardapioDia {
   custo_total?: number;
   observacoes?: string;
   refeicoes?: CardapioRefeicao[];
+  refeicoes_agrupadas?: CardapioRefeicaoGrupo[];
 }
 
 export interface CardapioRefeicao {
@@ -134,6 +135,26 @@ export interface CardapioRefeicao {
   observacoes?: string;
   ordem?: number;
   ficha_tecnica_nome?: string;
+}
+
+export interface CardapioComponente {
+  id?: string;
+  tipo_refeicao: string;
+  categoria?: string;
+  ficha_tecnica_id?: string;
+  codigo_prato?: string;
+  nome_prato?: string;
+  custo_unitario?: number;
+  custo_total_item?: number;
+  observacoes?: string;
+  ordem?: number;
+}
+
+export interface CardapioRefeicaoGrupo {
+  tipo_refeicao: string;
+  label: string;
+  custo_total?: number;
+  componentes: CardapioComponente[];
 }
 
 export interface Cardapio {
@@ -165,12 +186,37 @@ export interface GerarRequest {
   restricoes_usuario?: string;
   refeicoes?: string[];
   nome_cardapio?: string;
+  generator_agent_id?: string;
+  reviewer_agent_id?: string;
   llm_model?: string;
   review_llm_model?: string;
   review_enabled?: boolean;
   review_strategy?: "consultive";
   contrato_analise_confirmada?: boolean;
   generation_mode?: "fast" | "full";
+}
+
+export interface RuntimeAgentOption {
+  profile_id: string;
+  version_id: string;
+  slot_type: "contract_analyzer" | "generator" | "reviewer" | "copilot";
+  name: string;
+  slug: string;
+  description?: string;
+  provider_model_id: string;
+  provider_label?: string;
+  enabled: boolean;
+  allowed_tools: string[];
+  version_number: number;
+  published_at?: string;
+}
+
+export interface AgentsRuntimePayload {
+  flow_key: string;
+  generator_agents: RuntimeAgentOption[];
+  reviewer_agents: RuntimeAgentOption[];
+  contract_analyzer_binding?: RuntimeAgentOption | null;
+  copilot_binding?: RuntimeAgentOption | null;
 }
 
 export interface JobStatus {

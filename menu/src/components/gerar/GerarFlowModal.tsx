@@ -403,11 +403,11 @@ export function GerarFlowModal({
 
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               <div className="rounded-lg border border-hairline bg-surface-soft p-3">
-                <p className="text-xs text-ink-muted-48">Modelo gerador</p>
+                <p className="text-xs text-ink-muted-48">Agente gerador</p>
                 <p className="mt-1 text-sm font-medium text-ink">{confirmData.generatorModelLabel || "Padrão"}</p>
               </div>
               <div className="rounded-lg border border-hairline bg-surface-soft p-3">
-                <p className="text-xs text-ink-muted-48">Modelo revisor</p>
+                <p className="text-xs text-ink-muted-48">Agente revisor</p>
                 <p className="mt-1 text-sm font-medium text-ink">{confirmData.reviewModelLabel || "Sem revisão LLM"}</p>
               </div>
             </div>

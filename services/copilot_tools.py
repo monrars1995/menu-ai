@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Optional, Type
+from typing import Any, Callable, Iterable, Optional, Type
 
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
@@ -935,6 +935,9 @@ def _handle_gerar_novamente_cardapio(
         "contrato_analise_confirmada": True,
         "timeout_budget_seconds": timeout_budget_seconds,
         "source_cardapio_id": str(row.id),
+        "generator_agent_id": params.get("generator_agent_id"),
+        "reviewer_agent_id": params.get("reviewer_agent_id"),
+        "agent_bindings": params.get("agent_bindings") if isinstance(params.get("agent_bindings"), dict) else {},
     }
 
     job_state.jobs[job_id] = {
@@ -986,6 +989,7 @@ def _handle_gerar_novamente_cardapio(
         upload_dir=UPLOAD_DIR,
         db_ok=True,
         contrato_analise_confirmada=True,
+        agent_bindings=payload_config.get("agent_bindings") if isinstance(payload_config.get("agent_bindings"), dict) else None,
     )
 
     payload = {
@@ -996,14 +1000,19 @@ def _handle_gerar_novamente_cardapio(
         "cardapio_origem_id": str(row.id),
         "llm_model": llm_model,
         "review_llm_model": review_llm_model,
+        "generator_agent_id": params.get("generator_agent_id"),
+        "reviewer_agent_id": params.get("reviewer_agent_id"),
         "generation_mode": "fast",
         "timeout_budget_seconds": timeout_budget_seconds,
     }
+    agent_bindings = payload_config.get("agent_bindings") if isinstance(payload_config.get("agent_bindings"), dict) else {}
+    generator_agent_name = str(((agent_bindings or {}).get("generator") or {}).get("profile_name") or llm_model or "default")
+    reviewer_agent_name = str(((agent_bindings or {}).get("reviewer") or {}).get("profile_name") or review_llm_model or "default")
     return ToolExecutionResult(
         "gerar_novamente_cardapio",
         (
             f"Iniciei uma nova geração a partir de **{row.nome}**. "
-            f"Gerador: `{llm_model or 'default'}` • Revisor: `{review_llm_model or 'default'}` • {dias} dias."
+            f"Agente gerador: `{generator_agent_name}` • Agente revisor: `{reviewer_agent_name}` • {dias} dias."
         ),
         payload,
         context_updates={
@@ -1102,11 +1111,22 @@ TOOLS: dict[str, CopilotTool] = {
 }
 
 
-def build_openai_tool_specs() -> list[dict[str, Any]]:
-    return [tool.openai_schema() for tool in TOOLS.values()]
+def build_openai_tool_specs(allowed_tool_names: Optional[Iterable[str]] = None) -> list[dict[str, Any]]:
+    allowed = set(allowed_tool_names) if allowed_tool_names else set(TOOLS.keys())
+    return [tool.openai_schema() for name, tool in TOOLS.items() if name in allowed]
 
 
-def execute_tool(db: Session, ctx: CopilotContext, tool_name: str, raw_args: dict[str, Any]) -> ToolExecutionResult:
+def execute_tool(
+    db: Session,
+    ctx: CopilotContext,
+    tool_name: str,
+    raw_args: dict[str, Any],
+    *,
+    allowed_tool_names: Optional[Iterable[str]] = None,
+) -> ToolExecutionResult:
+    allowed = set(allowed_tool_names) if allowed_tool_names else set(TOOLS.keys())
+    if tool_name not in allowed:
+        raise ValueError(f"Tool '{tool_name}' não está permitida para o agente ativo.")
     tool = TOOLS.get(tool_name)
     if tool is None:
         raise ValueError(f"Tool '{tool_name}' não registrada.")
@@ -1186,16 +1206,26 @@ def _extract_search_hint(
     return hint or None
 
 
-def fallback_route_from_text(text: str, ctx: CopilotContext) -> tuple[Optional[str], dict[str, Any]]:
+def fallback_route_from_text(
+    text: str,
+    ctx: CopilotContext,
+    allowed_tool_names: Optional[Iterable[str]] = None,
+) -> tuple[Optional[str], dict[str, Any]]:
+    allowed = set(allowed_tool_names) if allowed_tool_names else set(TOOLS.keys())
     normalized = " ".join((text or "").strip().lower().split())
     if not normalized:
         return None, {}
 
+    def allowed_result(tool_name: str, args: dict[str, Any]) -> tuple[Optional[str], dict[str, Any]]:
+        if tool_name not in allowed:
+            return None, {}
+        return tool_name, args
+
     if "aprovar" in normalized and "cardap" in normalized:
-        return "aprovar_cardapio", {"cardapio_id": ctx.cardapio_id}
+        return allowed_result("aprovar_cardapio", {"cardapio_id": ctx.cardapio_id})
 
     if ("gerar novamente" in normalized or "regener" in normalized) and "cardap" in normalized:
-        return "gerar_novamente_cardapio", {"cardapio_id": ctx.cardapio_id}
+        return allowed_result("gerar_novamente_cardapio", {"cardapio_id": ctx.cardapio_id})
 
     if "export" in normalized and "cardap" in normalized:
         formato = "xlsx"
@@ -1203,33 +1233,33 @@ def fallback_route_from_text(text: str, ctx: CopilotContext) -> tuple[Optional[s
             if candidate in normalized:
                 formato = candidate
                 break
-        return "exportar_cardapio", {"cardapio_id": ctx.cardapio_id, "formato": formato}
+        return allowed_result("exportar_cardapio", {"cardapio_id": ctx.cardapio_id, "formato": formato})
 
     if "analis" in normalized and "contrat" in normalized:
-        return "analisar_contrato", {"contrato_id": ctx.contrato_id}
+        return allowed_result("analisar_contrato", {"contrato_id": ctx.contrato_id})
 
     if "ingred" in normalized and any(token in normalized for token in ("buscar", "listar", "consult", "mostrar")):
-        return "buscar_ingredientes", {
+        return allowed_result("buscar_ingredientes", {
             "busca": _extract_search_hint(text, noun_variants=("ingred",)),
             "limit": 12,
-        }
+        })
 
     if "ficha" in normalized and any(token in normalized for token in ("buscar", "listar", "consult", "mostrar")):
-        return "buscar_fichas", {
+        return allowed_result("buscar_fichas", {
             "busca": _extract_search_hint(text, noun_variants=("ficha", "fichas", "tecnica", "tecnicas")),
             "limit": 12,
-        }
+        })
 
     if "contrat" in normalized and any(token in normalized for token in ("buscar", "listar", "consult", "mostrar")):
-        return "buscar_contratos", {
+        return allowed_result("buscar_contratos", {
             "busca": _extract_search_hint(text, noun_variants=("contrat", "contrato", "contratos")),
             "limit": 12,
-        }
+        })
 
     if "cardap" in normalized and any(token in normalized for token in ("listar", "mostrar")):
-        return "listar_cardapios", {"limit": 12}
+        return allowed_result("listar_cardapios", {"limit": 12})
 
     if "ver" in normalized and "cardap" in normalized:
-        return "ver_cardapio", {"cardapio_id": ctx.cardapio_id}
+        return allowed_result("ver_cardapio", {"cardapio_id": ctx.cardapio_id})
 
     return None, {}

@@ -10,9 +10,16 @@ Tabelas:
   6.  ficha_ingredientes    — ingredientes por receita (tabela junction)
   7.  cardapios             — cardápios gerados (por empresa e período)
   8.  cardapio_dias         — dias individuais de um cardápio
-  9.  cardapio_refeicoes    — pratos de cada dia
+  9.  cardapio_refeicoes    — componentes gerados por refeição/dia
   10. aprovacoes_cardapio   — workflow de aprovação
   11. jobs_agente           — rastreamento de jobs dos agentes IA
+  12. llm_model_config      — ativação administrativa do catálogo bruto
+  13. agent_profiles        — identidade estável dos agentes
+  14. agent_versions        — drafts e versões publicadas
+  15. flow_agent_bindings   — bindings ativos por slot/fluxo
+  16. knowledge_documents   — documentos sincronizados para RAG
+  17. knowledge_chunks      — chunks vetorizados por documento
+  18. llm_audit_logs        — auditoria de chamadas LLM
 """
 import os
 import uuid
@@ -531,7 +538,123 @@ class LlmModelConfig(Base):
 
 
 # ============================================================
-# 13. BASE DE CONHECIMENTO / VETORES
+# 13. AGENTES PUBLICADOS
+# ============================================================
+class AgentSlotType:
+    CONTRACT_ANALYZER = "contract_analyzer"
+    GENERATOR = "generator"
+    REVIEWER = "reviewer"
+    COPILOT = "copilot"
+
+
+class AgentVersionStatus:
+    DRAFT = "draft"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+
+
+class AgentProfile(Base):
+    __tablename__ = "agent_profiles"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    name = Column(String(160), nullable=False)
+    slug = Column(String(120), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    slot_type = Column(
+        Enum(
+            "contract_analyzer",
+            "generator",
+            "reviewer",
+            "copilot",
+            name="agent_slot_type_enum",
+        ),
+        nullable=False,
+        index=True,
+    )
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    versions = relationship(
+        "AgentVersion",
+        back_populates="profile",
+        cascade="all, delete-orphan",
+        order_by="AgentVersion.created_at.desc()",
+    )
+    bindings = relationship("FlowAgentBinding", back_populates="profile")
+
+    def __repr__(self):
+        return f"<AgentProfile {self.slug} slot={self.slot_type}>"
+
+
+class AgentVersion(Base):
+    __tablename__ = "agent_versions"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    profile_id = Column(String(36), ForeignKey("agent_profiles.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(Integer, default=0, nullable=False)
+    status = Column(
+        Enum("draft", "published", "archived", name="agent_version_status_enum"),
+        default="draft",
+        nullable=False,
+        index=True,
+    )
+    provider_model_id = Column(String(120), nullable=False)
+    system_prompt = Column(Text, nullable=False)
+    allowed_tools_json = Column(JSON, nullable=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    publish_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    published_at = Column(DateTime, nullable=True)
+
+    profile = relationship("AgentProfile", back_populates="versions")
+    bindings = relationship("FlowAgentBinding", back_populates="version")
+
+    __table_args__ = (
+        UniqueConstraint("profile_id", "version_number", name="uq_agent_version_profile_number"),
+        Index("ix_agent_versions_profile_status", "profile_id", "status"),
+    )
+
+    def __repr__(self):
+        return f"<AgentVersion profile={self.profile_id} v={self.version_number} status={self.status}>"
+
+
+class FlowAgentBinding(Base):
+    __tablename__ = "flow_agent_bindings"
+
+    id = Column(String(36), primary_key=True, default=_uuid)
+    flow_key = Column(String(80), nullable=False, default="gerar")
+    slot_type = Column(
+        Enum(
+            "contract_analyzer",
+            "generator",
+            "reviewer",
+            "copilot",
+            name="flow_agent_binding_slot_enum",
+        ),
+        nullable=False,
+        index=True,
+    )
+    profile_id = Column(String(36), ForeignKey("agent_profiles.id", ondelete="SET NULL"), nullable=True)
+    version_id = Column(String(36), ForeignKey("agent_versions.id", ondelete="SET NULL"), nullable=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+    profile = relationship("AgentProfile", back_populates="bindings")
+    version = relationship("AgentVersion", back_populates="bindings")
+
+    __table_args__ = (
+        UniqueConstraint("flow_key", "slot_type", name="uq_flow_agent_binding_flow_slot"),
+    )
+
+    def __repr__(self):
+        return f"<FlowAgentBinding flow={self.flow_key} slot={self.slot_type}>"
+
+
+# ============================================================
+# 16. BASE DE CONHECIMENTO / VETORES
 # ============================================================
 class KnowledgeDocument(Base):
     __tablename__ = "knowledge_documents"
@@ -708,4 +831,3 @@ class MensagemChat(Base):
 
     def __repr__(self):
         return f"<MensagemChat {self.id[:8]} role={self.role}>"
-

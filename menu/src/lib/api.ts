@@ -93,6 +93,7 @@ export const api = {
   info: () => request("/api/info"),
 
   llmModels: () => request("/api/llm-models"),
+  agentsRuntime: (flow = "gerar") => request(`/api/agents/runtime?flow=${encodeURIComponent(flow)}`),
 
   empresas: {
     list: () => request("/api/empresas/"),
@@ -193,6 +194,8 @@ export const api = {
       target_custo_total?: number;
       restricoes_usuario?: string;
       nome_cardapio?: string;
+      generator_agent_id?: string;
+      reviewer_agent_id?: string;
       llm_model?: string;
       review_llm_model?: string;
       review_enabled?: boolean;
@@ -206,6 +209,8 @@ export const api = {
         if (params.target_custo_total) formData.append("target_custo_total", String(params.target_custo_total));
         if (params.restricoes_usuario) formData.append("restricoes_usuario", params.restricoes_usuario);
         if (params.nome_cardapio) formData.append("nome_cardapio", params.nome_cardapio);
+        if (params.generator_agent_id) formData.append("generator_agent_id", params.generator_agent_id);
+        if (params.reviewer_agent_id) formData.append("reviewer_agent_id", params.reviewer_agent_id);
         if (params.llm_model) formData.append("llm_model", params.llm_model);
         if (params.review_llm_model) formData.append("review_llm_model", params.review_llm_model);
         if (typeof params.review_enabled === "boolean") formData.append("review_enabled", String(params.review_enabled));

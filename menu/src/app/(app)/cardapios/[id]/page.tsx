@@ -3,13 +3,52 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
-import type { Cardapio } from "@/lib/types";
-import { formatCurrency, formatDate, statusBadge } from "@/lib/utils";
+import type { Cardapio, CardapioComponente, CardapioRefeicao, CardapioRefeicaoGrupo } from "@/lib/types";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Spinner } from "@/components/ui/loading";
 import { ArrowLeft, Download, FileText, CheckCircle2, Send, Eye, Printer, FileSpreadsheet } from "lucide-react";
+
+const TIPOS_REFEICAO: Record<string, string> = {
+  cafe_manha: "Café da Manhã",
+  lanche_manha: "Lanche da Manhã",
+  almoco: "Almoço",
+  lanche_tarde: "Lanche da Tarde",
+  jantar: "Jantar",
+  ceia: "Ceia",
+};
+
+function toComponent(ref: CardapioRefeicao): CardapioComponente {
+  return {
+    id: ref.id,
+    tipo_refeicao: ref.tipo_refeicao,
+    categoria: ref.categoria,
+    ficha_tecnica_id: ref.ficha_tecnica_id,
+    codigo_prato: ref.codigo_prato,
+    nome_prato: ref.nome_prato || ref.ficha_tecnica_nome,
+    custo_unitario: ref.custo_porcao,
+    custo_total_item: ref.custo_porcao,
+    observacoes: ref.observacoes,
+    ordem: ref.ordem,
+  };
+}
+
+function groupFallback(refeicoes: CardapioRefeicao[] = []): CardapioRefeicaoGrupo[] {
+  const groups = new Map<string, CardapioComponente[]>();
+  for (const ref of refeicoes) {
+    const key = ref.tipo_refeicao || "almoco";
+    const current = groups.get(key) || [];
+    current.push(toComponent(ref));
+    groups.set(key, current);
+  }
+  return Array.from(groups.entries()).map(([tipo, componentes]) => ({
+    tipo_refeicao: tipo,
+    label: TIPOS_REFEICAO[tipo] || tipo,
+    custo_total: componentes.reduce((sum, item) => sum + Number(item.custo_total_item || item.custo_unitario || 0), 0),
+    componentes,
+  }));
+}
 
 export default function CardapioDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -48,13 +87,7 @@ export default function CardapioDetailPage() {
   if (loading) return <div className="flex min-h-[50vh] items-center justify-center"><Spinner size={28} /></div>;
   if (!cardapio) return null;
 
-  const badge = statusBadge(cardapio.status);
-
   const dias = cardapio.dias || [];
-  const TIPOS_REFEICAO: Record<string, string> = {
-    cafe_manha: "Café da Manhã", lanche_manha: "Lanche da Manhã", almoco: "Almoço",
-    lanche_tarde: "Lanche da Tarde", jantar: "Jantar", ceia: "Ceia",
-  };
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -115,6 +148,12 @@ export default function CardapioDetailPage() {
         <div className="space-y-4">
           {dias.map((dia, di) => (
             <div key={dia.id || di} className="rounded-lg border border-hairline bg-white">
+              {(() => {
+                const refeicoesAgrupadas = dia.refeicoes_agrupadas?.length
+                  ? dia.refeicoes_agrupadas
+                  : groupFallback(dia.refeicoes || []);
+                return (
+                  <>
               <div className="flex items-center justify-between border-b border-hairline px-5 py-3">
                 <div>
                   <span className="text-[18px] font-medium text-ink">Dia {dia.numero_dia || di + 1}</span>
@@ -122,23 +161,49 @@ export default function CardapioDetailPage() {
                 </div>
                 {dia.custo_total != null && <span className="text-sm font-medium text-ink">{formatCurrency(dia.custo_total)}</span>}
               </div>
-              {(dia.refeicoes || []).length === 0 ? (
+              {refeicoesAgrupadas.length === 0 ? (
                 <p className="px-5 py-4 text-xs text-ink-muted-48">Sem refeições registradas</p>
               ) : (
                 <div className="divide-y divide-hairline">
-                  {(dia.refeicoes || []).map((ref, ri) => (
-                    <div key={ri} className="flex items-center justify-between px-5 py-3">
-                      <div>
-                        <span className="text-xs font-medium uppercase tracking-wide text-ink-muted-80">
-                          {TIPOS_REFEICAO[ref.tipo_refeicao] || ref.tipo_refeicao}
-                        </span>
-                        <p className="mt-0.5 text-sm text-ink">{ref.nome_prato || ref.ficha_tecnica_nome || "—"}</p>
+                  {refeicoesAgrupadas.map((grupo, gi) => (
+                    <section key={`${grupo.tipo_refeicao}-${gi}`} className="px-5 py-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted-48">Refeição</p>
+                          <h3 className="text-base font-medium text-ink">{grupo.label || TIPOS_REFEICAO[grupo.tipo_refeicao] || grupo.tipo_refeicao}</h3>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted-48">Total da refeição</p>
+                          <p className="text-sm font-medium text-ink">{formatCurrency(grupo.custo_total || 0)}</p>
+                        </div>
                       </div>
-                      {ref.custo_porcao != null && <span className="text-sm text-ink-muted-48">{formatCurrency(ref.custo_porcao)}</span>}
-                    </div>
+
+                      <div className="overflow-hidden rounded-lg border border-hairline">
+                        <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_9rem_9rem] gap-3 border-b border-hairline bg-surface-soft px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-ink-muted-48">
+                          <span>Categoria</span>
+                          <span>Item</span>
+                          <span className="text-right">Unitário</span>
+                          <span className="text-right">Total item</span>
+                        </div>
+                        {(grupo.componentes || []).map((item, ii) => (
+                          <div
+                            key={`${grupo.tipo_refeicao}-${ii}-${item.nome_prato || item.codigo_prato || "item"}`}
+                            className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,2fr)_9rem_9rem] gap-3 border-b border-hairline px-4 py-3 last:border-b-0"
+                          >
+                            <div className="text-sm text-ink-muted-80">{item.categoria || "Sem categoria"}</div>
+                            <div className="text-sm text-ink">{item.nome_prato || "—"}</div>
+                            <div className="text-right text-sm text-ink-muted-80">{formatCurrency(item.custo_unitario || 0)}</div>
+                            <div className="text-right text-sm font-medium text-ink">{formatCurrency(item.custo_total_item || item.custo_unitario || 0)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
                   ))}
                 </div>
               )}
+                  </>
+                );
+              })()}
             </div>
           ))}
         </div>

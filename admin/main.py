@@ -24,6 +24,7 @@ load_dotenv()
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 from admin.deps import get_usuario_admin  # noqa: E402
+from admin.routers.agents_admin import router as agents_admin_router  # noqa: E402
 from admin.routers.knowledge_admin import router as knowledge_admin_router  # noqa: E402
 from admin.routers.llm_admin import router as llm_admin_router  # noqa: E402
 from admin.routers.meta import router as meta_router  # noqa: E402
@@ -36,7 +37,7 @@ from routers.empresas import router as empresas_router  # noqa: E402
 from routers.fichas_tecnicas import router as fichas_router  # noqa: E402
 from routers.ingredientes import router as ingredientes_router  # noqa: E402
 
-APP_VERSION = "3.5.3"
+APP_VERSION = "3.7.0"
 ADMIN_DIR = Path(__file__).resolve().parent
 ADMIN_STATIC_DIR = ADMIN_DIR / "static"
 
@@ -113,6 +114,7 @@ app.include_router(fichas_router)
 app.include_router(cardapios_router)
 app.include_router(meta_router)
 app.include_router(llm_admin_router)
+app.include_router(agents_admin_router)
 app.include_router(knowledge_admin_router)
 
 

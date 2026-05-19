@@ -278,10 +278,18 @@ def analisar_contrato(
     if contrato.regras_json and not body.force and not analysis_looks_invalid(contrato.regras_json):
         return _contrato_analise_payload(contrato, contrato.regras_json)
 
-    try:
-        from pipeline.openrouter_models import assert_llm_model_allowed_for_generation
+    resolved_analyzer_agent = None
+    effective_llm_model = body.llm_model
+    step_system_overrides = None
 
-        assert_llm_model_allowed_for_generation(db, body.llm_model)
+    try:
+        from database.models import AgentSlotType
+        from services.agent_runtime import resolve_agent_for_slot
+
+        resolved_analyzer_agent = resolve_agent_for_slot(db, AgentSlotType.CONTRACT_ANALYZER)
+        effective_llm_model = body.llm_model or resolved_analyzer_agent.version.provider_model_id
+        if resolved_analyzer_agent.version.system_prompt:
+            step_system_overrides = {0: resolved_analyzer_agent.version.system_prompt}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -298,7 +306,8 @@ def analisar_contrato(
             empresa_id=str(contrato.empresa_id),
             contrato_id=str(contrato.id),
             db_disponivel=True,
-            llm_model_id=body.llm_model,
+            llm_model_id=effective_llm_model,
+            step_system_overrides=step_system_overrides,
         )
         regras = crew.analisar_contrato_apenas()
     except Exception as exc:

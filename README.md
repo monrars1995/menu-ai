@@ -1,4 +1,4 @@
-# Menu.AI v3.6.25
+# Menu.AI v3.7.0
 
 Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, PostgreSQL, OpenAI, Gemini, Moonshot e OpenRouter.
 
@@ -27,7 +27,7 @@ Backend, admin e banco de dados empacotados para Docker Desktop com FastAPI, Pos
   - `openrouter-anthropic-claude-sonnet-4.6` -> `openrouter/anthropic/claude-sonnet-4.6`
   - `openrouter-anthropic-claude-opus-4.7` -> `openrouter/anthropic/claude-opus-4.7`
 
-Padrão de geração: `MENUAI_DEFAULT_LLM_MODEL` só é usado quando o request não envia `llm_model`. Quando o usuário escolhe um modelo no menu, essa seleção passa a ser respeitada como primária e os fallbacks ficam alinhados ao mesmo provedor/rota antes de tentar alternativas mais distantes. O modo padrão de cardápio é `MENUAI_GENERATION_MODE=fast`, com pipeline completo legado disponível por `generation_mode="full"`.
+Padrão de geração: `MENUAI_DEFAULT_LLM_MODEL` só é usado quando o request não envia `llm_model`. No `/gerar`, o usuário final agora escolhe **agentes publicados** de geração e revisão; o backend resolve o modelo, o prompt de sistema e a whitelist de tools a partir do binding publicado no admin. O modo padrão de cardápio é `MENUAI_GENERATION_MODE=fast`, com pipeline completo legado disponível por `generation_mode="full"`.
 
 Após a geração, o cardápio é apresentado no chat com prévia operacional, custo gerencial e ações de aprovação ou nova geração. O XLSX exportado inclui abas no formato padrão de refeição/desjejum com pares de colunas de prato e `% Consumo`, além da matriz completa, lista de compras e resumos.
 

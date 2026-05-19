@@ -441,13 +441,13 @@ function ConfirmCard({
         </div>
         {data.generatorModelLabel && (
           <div className="rounded-lg bg-white/10 p-3">
-            <span className="text-white/50">Modelo gerador:</span>
+            <span className="text-white/50">Agente gerador:</span>
             <p className="mt-0.5 font-medium text-white">{data.generatorModelLabel}</p>
           </div>
         )}
         {data.reviewModelLabel && (
           <div className="rounded-lg bg-white/10 p-3">
-            <span className="text-white/50">Modelo revisor:</span>
+            <span className="text-white/50">Agente revisor:</span>
             <p className="mt-0.5 font-medium text-white">{data.reviewModelLabel}</p>
           </div>
         )}
@@ -669,7 +669,7 @@ function ResultCard({
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
           <p className="text-xs font-medium text-red-900">Contingência desabilitada para aprovação</p>
           <p className="mt-1 text-[11px] leading-relaxed text-red-800">
-            O gerador LLM principal falhou. Este resultado não deve seguir como aprovação normal. O caminho correto aqui é gerar novamente, trocar o modelo ou reduzir os dias.
+            O gerador LLM principal falhou. Este resultado não deve seguir como aprovação normal. O caminho correto aqui é gerar novamente, trocar o agente ou reduzir os dias.
           </p>
         </div>
       )}
@@ -772,6 +772,7 @@ function ErrorCard({
     normalizedError.includes("timeout") ||
     normalizedError.includes("falha ao gerar cardápio") ||
     normalizedError.includes("modelo selecionado") ||
+    normalizedError.includes("agente selecionado") ||
     normalizedError.includes("sem progresso") ||
     normalizedError.includes("sincroniza");
 
@@ -793,7 +794,7 @@ function ErrorCard({
                 onClick={onSwitchModel}
                 className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
               >
-                Trocar modelo
+                Trocar agente
               </button>
               <button
                 onClick={onReduceDays}

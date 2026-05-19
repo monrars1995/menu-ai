@@ -328,8 +328,6 @@ def _catalog_snapshot(db: Session, empresa_id: str, max_per_bucket: int = 80) ->
     )
     for f in rows:
         bucket = _bucket_for(f.categoria, f.nome)
-        if len(buckets[bucket]) >= max_per_bucket:
-            continue
         buckets[bucket].append(
             Candidate(
                 id=str(f.id),
@@ -343,6 +341,12 @@ def _catalog_snapshot(db: Session, empresa_id: str, max_per_bucket: int = 80) ->
                 lactose=bool(f.contem_lactose),
             )
         )
+    for bucket_name, items in list(buckets.items()):
+        if not items:
+            continue
+        positive_cost_items = [item for item in items if float(item.custo or 0) > 0]
+        filtered = positive_cost_items if positive_cost_items else items
+        buckets[bucket_name] = filtered[:max_per_bucket]
     return buckets
 
 
@@ -594,6 +598,7 @@ def _llm_generate(
     target_custo_proteico: float,
     catalog: dict[str, list[Candidate]],
     repair_context: Optional[str] = None,
+    system_prompt_override: Optional[str] = None,
     request_timeout_seconds: Optional[float] = None,
     max_attempts: Optional[int] = None,
     on_attempt: Optional[Callable[[dict[str, Any]], None]] = None,
@@ -619,6 +624,8 @@ def _llm_generate(
         "Retorne APENAS JSON válido e compacto. "
         "Use exclusivamente nomes existentes no catálogo permitido."
     )
+    if system_prompt_override and system_prompt_override.strip():
+        system = f"{system_prompt_override.strip()}\n\n---\n\n{system}"
     repair_block = f"\n\nCORRIJA A SAÍDA ANTERIOR:\n{repair_context}" if repair_context else ""
     user = (
         f"Gere um cardápio de {dias} dias para as refeições: "
@@ -767,6 +774,7 @@ def _llm_review(
     refeicoes: list[str],
     catalog: dict[str, list[Candidate]],
     regras_contrato: dict[str, Any],
+    system_prompt_override: Optional[str] = None,
     request_timeout_seconds: Optional[float] = None,
     max_attempts: Optional[int] = None,
     on_attempt: Optional[Callable[[dict[str, Any]], None]] = None,
@@ -784,6 +792,8 @@ def _llm_review(
         "Nunca invente pratos fora do catálogo permitido. "
         "Só aplique reviewed_rows quando a correção for segura e continuar usando itens do catálogo."
     )
+    if system_prompt_override and system_prompt_override.strip():
+        system = f"{system_prompt_override.strip()}\n\n---\n\n{system}"
     user = (
         f"Revise um cardápio de {dias} dias para as refeições "
         f"{', '.join(REFEICAO_LABELS.get(r, r) for r in refeicoes)}.\n"
@@ -954,12 +964,19 @@ def _validate_and_normalize(
 
 def _core_catalog_errors(catalog: dict[str, list[Candidate]], refeicoes: list[str]) -> list[str]:
     errors = []
+    def has_positive_cost(*bucket_names: str) -> bool:
+        return any(float(item.custo or 0) > 0 for bucket_name in bucket_names for item in catalog.get(bucket_name, []))
+
     needs_meal = any(not _is_breakfast_ref(ref) for ref in refeicoes)
     needs_breakfast = any(_is_breakfast_ref(ref) for ref in refeicoes)
     if needs_meal and not catalog.get("proteicos"):
         errors.append("Nenhuma ficha proteica ativa encontrada para a empresa.")
+    elif needs_meal and not has_positive_cost("proteicos"):
+        errors.append("As fichas proteicas ativas não possuem custo calculado. Recalcule fichas/ingredientes antes de gerar.")
     if needs_meal and not (catalog.get("guarnicoes") or catalog.get("arroz") or catalog.get("feijao")):
         errors.append("Nenhuma ficha de guarnição/acompanhamento ativa encontrada para a empresa.")
+    elif needs_meal and not has_positive_cost("guarnicoes", "arroz", "feijao"):
+        errors.append("As fichas de acompanhamento ativas não possuem custo calculado. Recalcule fichas/ingredientes antes de gerar.")
     if needs_meal and not (
         catalog.get("saladas_cruas")
         or catalog.get("saladas_cozidas")
@@ -967,8 +984,12 @@ def _core_catalog_errors(catalog: dict[str, list[Candidate]], refeicoes: list[st
         or catalog.get("saladas_graos")
     ):
         errors.append("Nenhuma ficha de salada ativa encontrada para a empresa.")
+    elif needs_meal and not has_positive_cost("saladas_cruas", "saladas_cozidas", "saladas_elaboradas", "saladas_graos"):
+        errors.append("As fichas de salada ativas não possuem custo calculado. Recalcule fichas/ingredientes antes de gerar.")
     if needs_breakfast and not (catalog.get("paes") or catalog.get("acompanhamentos_cafe")):
         errors.append("Nenhuma ficha de desjejum/café da manhã ativa encontrada para a empresa.")
+    elif needs_breakfast and not has_positive_cost("paes", "acompanhamentos_cafe", "bebidas", "frutas"):
+        errors.append("As fichas de desjejum/café da manhã ativas não possuem custo calculado. Recalcule fichas/ingredientes antes de gerar.")
     return errors
 
 
@@ -1033,11 +1054,19 @@ def _persist_cardapio(
     generation_state: Optional[str] = None,
     prompt_chars: Optional[int] = None,
     prompt_catalog_limit: Optional[int] = None,
+    agent_bindings: Optional[dict[str, dict[str, Any]]] = None,
 ) -> str:
-    from database.models import Cardapio, CardapioDia, CardapioRefeicao, JobAgente
+    from database.models import Cardapio, CardapioDia, CardapioRefeicao, FichaTecnica, JobAgente
     from services.knowledge_hooks import sync_cardapio_document_async
 
     lookup = _candidate_lookup(catalog)
+    fichas = (
+        db.query(FichaTecnica)
+        .filter(FichaTecnica.empresa_id == empresa_id, FichaTecnica.ativo == True)  # noqa: E712
+        .all()
+    )
+    ficha_by_code = {_norm(f.codigo): f for f in fichas if getattr(f, "codigo", None)}
+    ficha_by_name = {_norm(f.nome): f for f in fichas if getattr(f, "nome", None)}
     cardapio = Cardapio(
         empresa_id=empresa_id,
         contrato_id=contrato_id,
@@ -1074,6 +1103,13 @@ def _persist_cardapio(
             "review_findings_count": len(review_findings or []),
             "degraded_generation": degraded_generation,
             "generation_state": generation_state,
+            "generator_agent_id": ((agent_bindings or {}).get("generator") or {}).get("profile_id"),
+            "generator_agent_version_id": ((agent_bindings or {}).get("generator") or {}).get("version_id"),
+            "reviewer_agent_id": ((agent_bindings or {}).get("reviewer") or {}).get("profile_id"),
+            "reviewer_agent_version_id": ((agent_bindings or {}).get("reviewer") or {}).get("version_id"),
+            "contract_analyzer_agent_version_id": ((agent_bindings or {}).get("contract_analyzer") or {}).get("version_id"),
+            "copilot_agent_version_id": ((agent_bindings or {}).get("copilot") or {}).get("version_id"),
+            "agent_bindings": agent_bindings or {},
         },
         updated_at=datetime.utcnow(),
     )
@@ -1098,15 +1134,22 @@ def _persist_cardapio(
                 if nome == "-":
                     continue
                 cand = lookup.get(_norm(nome))
+                ficha_match = ficha_by_code.get(_norm(nome)) or ficha_by_name.get(_norm(nome))
                 custo = float(cand.custo) if cand else 0.0
+                ficha_tecnica_id = cand.id if cand else None
+                codigo_prato = cand.codigo if cand else None
+                if ficha_match and (custo <= 0 or not ficha_tecnica_id):
+                    custo = float(ficha_match.custo_porcao or 0.0)
+                    ficha_tecnica_id = str(ficha_match.id)
+                    codigo_prato = ficha_match.codigo
                 day_cost += custo
                 db.add(
                     CardapioRefeicao(
                         dia_id=dia_db.id,
-                        ficha_tecnica_id=cand.id if cand else None,
+                        ficha_tecnica_id=ficha_tecnica_id,
                         tipo_refeicao=refeicao,
                         categoria=col,
-                        codigo_prato=cand.codigo if cand else None,
+                        codigo_prato=codigo_prato,
                         nome_prato=nome,
                         custo_porcao=round(custo, 2),
                         observacoes=None,
@@ -1150,6 +1193,13 @@ def _persist_cardapio(
                 "review_findings_count": len(review_findings or []),
                 "degraded_generation": degraded_generation,
                 "generation_state": generation_state,
+                "generator_agent_id": ((agent_bindings or {}).get("generator") or {}).get("profile_id"),
+                "generator_agent_version_id": ((agent_bindings or {}).get("generator") or {}).get("version_id"),
+                "reviewer_agent_id": ((agent_bindings or {}).get("reviewer") or {}).get("profile_id"),
+                "reviewer_agent_version_id": ((agent_bindings or {}).get("reviewer") or {}).get("version_id"),
+                "contract_analyzer_agent_version_id": ((agent_bindings or {}).get("contract_analyzer") or {}).get("version_id"),
+                "copilot_agent_version_id": ((agent_bindings or {}).get("copilot") or {}).get("version_id"),
+                "agent_bindings": agent_bindings or {},
             }
         )
         job_db.parametros_json = params
@@ -1179,6 +1229,7 @@ def run_fast_generation(
     regras_contrato: dict[str, Any],
     started_ts: float,
     progress: Callable[[int, str, str], None],
+    agent_bindings: Optional[dict[str, dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     if not empresa_id:
         raise ValueError("empresa_id é obrigatório para geração rápida com fichas do banco.")
@@ -1188,6 +1239,8 @@ def run_fast_generation(
 
     db = SessionLocal()
     try:
+        from services.cascata import recalcular_todas_fichas_empresa
+
         allow_degraded_fallback = (
             (os.getenv("MENUAI_FAST_ALLOW_DEGRADED_FALLBACK") or "false").strip().lower()
             in {"1", "true", "yes", "on"}
@@ -1226,7 +1279,7 @@ def run_fast_generation(
                 raise FastGenerationTimeout(
                     (
                         f"Tempo limite da geração rápida excedido ({int(budget_seconds)}s). "
-                        f"Etapa atual: {stage}. Tente novamente, troque o modelo ou reduza os dias."
+                        f"Etapa atual: {stage}. Tente novamente, troque o agente ou reduza os dias."
                     ),
                     timeout_reason=f"budget_exceeded_at_{stage}",
                 )
@@ -1248,6 +1301,12 @@ def run_fast_generation(
             ),
         )
         refeicoes_norm = refeicoes or ["almoco"]
+        ensure_budget("refresh_recipe_costs", reserve_seconds=35)
+        progress(38, "🧮 Recalculando fichas e custos a partir dos ingredientes ativos...", "Gestor de Fichas Técnicas")
+        recalculated_count = recalcular_todas_fichas_empresa(db, empresa_id)
+        db.flush()
+        touch_job(f"Fichas recalculadas para geração: {recalculated_count}")
+
         ensure_budget("catalog_snapshot", reserve_seconds=25)
         progress(45, "📚 Montando catálogo rápido de fichas técnicas...", "Gestor de Fichas Técnicas")
         catalog = _catalog_snapshot(db, empresa_id)
@@ -1266,6 +1325,8 @@ def run_fast_generation(
         timeout_reason: Optional[str] = None
         degraded_generation = False
         generation_state = "generator_succeeded_reviewer_pending" if review_enabled else "generator_succeeded_review_disabled"
+        generator_system_prompt = str((agent_bindings or {}).get("generator", {}).get("system_prompt") or "").strip() or None
+        reviewer_system_prompt = str((agent_bindings or {}).get("reviewer", {}).get("system_prompt") or "").strip() or None
         review_outcome = ReviewOutcome(
             status="not_requested" if not review_enabled else "pending",
             summary="",
@@ -1306,6 +1367,7 @@ def run_fast_generation(
                 target_custo_total=target_custo_total,
                 target_custo_proteico=target_custo_proteico,
                 catalog=catalog,
+                system_prompt_override=generator_system_prompt,
                 request_timeout_seconds=timeout_for_this_call,
                 max_attempts=max_attempts,
                 on_attempt=on_llm_attempt,
@@ -1321,8 +1383,8 @@ def run_fast_generation(
             if not allow_degraded_fallback:
                 raise FastGenerationProviderFailure(
                     (
-                        "Falha ao gerar cardápio com o modelo selecionado. "
-                        f"{failure_summary} Tente novamente, troque o modelo ou reduza os dias."
+                        "Falha ao gerar cardápio com o agente selecionado. "
+                        f"{failure_summary} Tente novamente, troque o agente ou reduza os dias."
                     ),
                     failure_summary=failure_summary,
                     generator_model=llm_model,
@@ -1373,6 +1435,7 @@ def run_fast_generation(
                         {"warnings": validation_warnings[:30], "saida_anterior": normalized[: max(dias, 30)]},
                         ensure_ascii=False,
                     )[:12000],
+                    system_prompt_override=generator_system_prompt,
                     request_timeout_seconds=timeout_for_repair,
                     max_attempts=max_attempts,
                     on_attempt=on_llm_attempt,
@@ -1425,6 +1488,7 @@ def run_fast_generation(
                     refeicoes=refeicoes_norm,
                     catalog=catalog,
                     regras_contrato=regras_contrato or {},
+                    system_prompt_override=reviewer_system_prompt,
                     request_timeout_seconds=timeout_for_review,
                     max_attempts=max_attempts,
                     on_attempt=on_llm_attempt,
@@ -1518,6 +1582,7 @@ def run_fast_generation(
             generation_state=generation_state,
             prompt_chars=llm_prompt_chars,
             prompt_catalog_limit=llm_prompt_catalog_limit,
+            agent_bindings=agent_bindings,
         )
         logger.info(
             "job_event=%s",
@@ -1566,6 +1631,7 @@ def run_fast_generation(
             "generation_state": generation_state,
             "prompt_chars": llm_prompt_chars,
             "prompt_catalog_limit": llm_prompt_catalog_limit,
+            "agent_bindings": agent_bindings or {},
         }
     except FastGenerationTimeout as timeout_exc:
         timeout_reason = timeout_exc.timeout_reason
