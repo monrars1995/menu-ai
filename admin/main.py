@@ -37,7 +37,7 @@ from routers.empresas import router as empresas_router  # noqa: E402
 from routers.fichas_tecnicas import router as fichas_router  # noqa: E402
 from routers.ingredientes import router as ingredientes_router  # noqa: E402
 
-APP_VERSION = "3.7.1"
+APP_VERSION = "3.7.2"
 ADMIN_DIR = Path(__file__).resolve().parent
 ADMIN_STATIC_DIR = ADMIN_DIR / "static"
 
@@ -163,6 +163,7 @@ def admin_info(db: Session = Depends(get_db), usuario=Depends(get_usuario_admin)
     """Smoke interno: usuário efetivo da sessão admin."""
     return {
         "usuario_id": usuario.id,
+        "nome": usuario.nome,
         "email": usuario.email,
         "role": usuario.role,
         "empresa_id": usuario.empresa_id,

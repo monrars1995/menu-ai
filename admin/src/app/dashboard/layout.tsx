@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 import {
   LayoutDashboard,
@@ -32,8 +33,26 @@ const nav = [
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!auth.loading && !auth.token && !auth.apiKey) {
+      router.replace("/login");
+    }
+  }, [auth.loading, auth.token, auth.apiKey, router]);
 
   if (auth.loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[var(--surface-canvas)]">
+        <div
+          className="h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-hairline)] border-t-[var(--color-ink)]"
+          aria-hidden
+        />
+      </div>
+    );
+  }
+
+  if (!auth.token && !auth.apiKey) {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--surface-canvas)]">
         <div

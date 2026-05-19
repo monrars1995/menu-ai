@@ -14,12 +14,12 @@ from sqlalchemy.orm import Session
 
 from database.connection import get_db
 from database.models import Usuario
-from routers.auth import decodificar_token
+from routers.auth_supabase import get_usuario_atual as get_usuario_atual_auth
 
 security = HTTPBearer(auto_error=False)
 
 
-def get_usuario_admin(
+async def get_usuario_admin(
     db: Session = Depends(get_db),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     x_admin_api_key: Optional[str] = Header(None, alias="X-Admin-Api-Key"),
@@ -48,26 +48,7 @@ def get_usuario_admin(
             detail="Defina MENUAI_ADMIN_IMPERSONATE_USER_ID ou crie um usuário super_admin.",
         )
 
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Use Authorization: Bearer <JWT> (admin/super_admin) ou X-Admin-Api-Key.",
-        )
-    payload = decodificar_token(credentials.credentials)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido ou expirado.",
-        )
-    usuario = db.query(Usuario).filter(
-        Usuario.id == payload.get("sub"),
-        Usuario.ativo == True,
-    ).first()
-    if not usuario:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuário não encontrado ou inativo.",
-        )
+    usuario = await get_usuario_atual_auth(credentials=credentials, db=db)
     if usuario.role not in ("super_admin", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

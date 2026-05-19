@@ -1,6 +1,6 @@
 
 """
-Menu.AI — Backend FastAPI v3.7.1
+Menu.AI — Backend FastAPI v3.7.2
 Pipeline LLM + ferramentas + Banco de Dados PostgreSQL/Supabase + Multi-Tenant
 """
 import io
@@ -30,7 +30,7 @@ from slowapi.util import get_remote_address
 
 load_dotenv()
 
-APP_VERSION = "3.7.1"
+APP_VERSION = "3.7.2"
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 _DEFAULT_SECRET = "menuai-secret-key-change-in-production-2026"
 SECRET_KEY = os.getenv("SECRET_KEY", _DEFAULT_SECRET)
@@ -138,6 +138,7 @@ from database.schemas import GerarCardapioRequest
 
 # Admin routers (disponíveis no app principal para consumo pelo Next.js admin)
 from admin.routers.agents_admin import router as admin_agents_router
+from admin.deps import get_usuario_admin
 from admin.routers.meta import router as admin_meta_router
 from admin.routers.llm_admin import router as admin_llm_router
 from admin.routers.knowledge_admin import router as admin_knowledge_router
@@ -914,6 +915,17 @@ async def admin_recent_jobs(
         return {"items": items, "total": len(items)}
     finally:
         db.close()
+
+
+@app.get("/api/admin/info")
+async def admin_info_backend(usuario=Depends(get_usuario_admin)):
+    return {
+        "usuario_id": str(usuario.id),
+        "nome": usuario.nome,
+        "email": usuario.email,
+        "role": usuario.role,
+        "empresa_id": str(usuario.empresa_id) if getattr(usuario, "empresa_id", None) else None,
+    }
 
 
 # ============================================================
